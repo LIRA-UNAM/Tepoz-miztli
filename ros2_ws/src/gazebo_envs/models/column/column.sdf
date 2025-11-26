@@ -1,0 +1,32 @@
+<?xml version="1.0" ?>
+<sdf version="1.8">
+<model name="Column">
+      <pose>0 0 1.35 0 0 0</pose>
+        <link name="comuln_link">
+          <inertial>
+            <mass>10.0</mass>
+          </inertial>
+          <collision name="collision">
+            <geometry>
+              <cylinder>
+                <radius>0.3</radius>
+                <length>2.3</length>
+              </cylinder>
+            </geometry>
+          </collision>
+          <visual name="visual">
+            <geometry>
+              <cylinder>
+                <radius>0.3</radius>
+                <length>2.7</length>
+              </cylinder>
+            </geometry>
+            <material>
+              <ambient>1 0.5 0 1</ambient>
+              <diffuse>1 0.5 0 1</diffuse>
+              <specular>1 0.5 0 1</specular>
+            </material>
+          </visual>
+        </link>
+      </model>
+</sdf>

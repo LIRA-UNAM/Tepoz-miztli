@@ -1,0 +1,364 @@
+<?xml version="1.0" ?>
+<sdf version="1.8">
+  <world name="world_demo">
+
+    <!-- Configuración de la física -->
+    <physics name="1ms" type="ode">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+
+    <!-- Plugins principales -->
+    <plugin filename="gz-sim-physics-system"
+            name="gz::sim::systems::Physics" />
+    <plugin filename="gz-sim-user-commands-system"
+            name="gz::sim::systems::UserCommands" />
+    <plugin filename="gz-sim-scene-broadcaster-system"
+            name="gz::sim::systems::SceneBroadcaster" />
+
+    <!-- Luz solar -->
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <attenuation>
+        <range>1000</range>
+        <constant>0.9</constant>
+        <linear>0.01</linear>
+        <quadratic>0.001</quadratic>
+      </attenuation>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <!-- Interfaz gráfica -->
+    <gui fullscreen="0">
+
+      <plugin filename="GzScene3D" name="3D View">
+        <gz-gui>
+          <title>3D View</title>
+          <property type="bool" key="showTitleBar">false</property>
+          <property type="string" key="state">docked</property>
+        </gz-gui>
+        <engine>ogre2</engine>
+        <scene>scene</scene>
+        <ambient_light>0.4 0.4 0.4</ambient_light>
+        <background_color>0.8 0.8 0.8</background_color>
+        <camera_pose>-6 0 6 0 0.5 0</camera_pose>
+        <camera_clip>
+          <near>0.25</near>
+          <far>25000</far>
+        </camera_clip>
+      </plugin>
+
+      <plugin filename="WorldControl" name="World control">
+        <gz-gui>
+          <title>World control</title>
+          <property type="bool" key="showTitleBar">false</property>
+          <property type="bool" key="resizable">false</property>
+          <property type="double" key="height">72</property>
+          <property type="double" key="width">121</property>
+          <property type="double" key="z">1</property>
+          <property type="string" key="state">floating</property>
+          <anchors target="3D View">
+            <line own="left" target="left"/>
+            <line own="bottom" target="bottom"/>
+          </anchors>
+        </gz-gui>
+        <play_pause>true</play_pause>
+        <step>true</step>
+        <start_paused>true</start_paused>
+        <service>/world/world_demo/control</service>
+        <stats_topics>/world/world_demo/stats</stats_topics>
+      </plugin>
+
+      <plugin filename="WorldStats" name="World stats">
+        <gz-gui>
+          <title>World stats</title>
+          <property type="bool" key="showTitleBar">false</property>
+          <property type="bool" key="resizable">false</property>
+          <property type="double" key="height">110</property>
+          <property type="double" key="width">290</property>
+          <property type="double" key="z">1</property>
+          <property type="string" key="state">floating</property>
+          <anchors target="3D View">
+            <line own="right" target="right"/>
+            <line own="bottom" target="bottom"/>
+          </anchors>
+        </gz-gui>
+        <sim_time>true</sim_time>
+        <real_time>true</real_time>
+        <real_time_factor>true</real_time_factor>
+        <iterations>true</iterations>
+        <topic>/world/world_demo/stats</topic>
+      </plugin>
+
+      <!-- Plugins GUI compatibles -->
+      <plugin filename="EntityTree" name="Entity tree"/>
+      <plugin filename="TransformControl" name="Transform Control"/>
+      <plugin filename="Shapes" name="Shapes"/>
+      <plugin filename="Lights" name="Lights"/>
+
+    </gui>
+
+    <!-- Modelos -->
+    <model name="ground">
+      <static>true</static>
+      <link name="ground_link">
+        <collision name="collision">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal> <size>15 15</size> 
+            </plane>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size> 15 15</size>
+            </plane>
+          </geometry>
+
+          <material>
+            <ambient>0.0 0.0 0.2 1</ambient>
+            <diffuse>0.0 0.0 0.2 1</diffuse>
+            <specular>0.0 0.0 0.2 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Muro1 -->
+    <model name="wall">
+        <pose> 5 0 1.25 0 0 0</pose>
+        <link name="wall_link">
+            <inertial>
+                <mass>10.0</mass>
+            </inertial>
+            <collision name="collision">
+                <geometry>
+                    <box>
+                        <size>0.2 10 2.5</size>
+                    </box>
+                </geometry>
+            </collision>
+            <visual name="visual">
+                <geometry>
+                    <box>
+                        <size>0.2 10 2.5</size>
+                    </box>
+                </geometry>
+
+                <material>
+                    <ambient>0.5 0.5 0.5 1</ambient>
+                    <diffuse>0.5 0.5 0.5 1</diffuse>
+                    <specular>0.5 0.5 0.5 1</specular>
+                </material>
+            </visual>
+        </link>
+        <static>true</static>
+    </model>
+
+    <!--Muro 2 -->
+    <model name="wall2">
+        <pose> -5 0 1.25 0 0 0</pose>
+        <link name="wall_link">
+            <inertial>
+                <mass>10.0</mass>
+            </inertial>
+            <collision name="collision">
+                <geometry>
+                    <box>
+                        <size>0.2 10 2.5</size>
+                    </box>
+                </geometry>
+            </collision>
+            <visual name="visual">
+                <geometry>
+                    <box>
+                        <size>0.2 10 2.5</size>
+                    </box>
+                </geometry>
+
+                <material>
+                    <ambient>0.5 0.5 0.5 1</ambient>
+                    <diffuse>0.5 0.5 0.5 1</diffuse>
+                    <specular>0.5 0.5 0.5 1</specular>
+                </material>
+            </visual>
+        </link>
+        <static>true</static>
+    </model>
+
+    <!--Muro 3 -->
+    <model name="wall3">
+        <pose> 0 5 1.25 0 0 1.5708</pose>
+        <link name="wall_link">
+            <inertial>
+                <mass>10.0</mass>
+            </inertial>
+            <collision name="collision">
+                <geometry>
+                    <box>
+                        <size>0.2 10 2.5</size>
+                    </box>
+                </geometry>
+            </collision>
+            <visual name="visual">
+                <geometry>
+                    <box>
+                        <size>0.2 10 2.5</size>
+                    </box>
+                </geometry>
+
+                <material>
+                    <ambient>0.5 0.5 0.5 1</ambient>
+                    <diffuse>0.5 0.5 0.5 1</diffuse>
+                    <specular>0.5 0.5 0.5 1</specular>
+                </material>
+            </visual>
+        </link>
+        <static>true</static>
+    </model>
+
+    <!--Muro 4 -->
+    <model name="wall4">
+        <pose> 0 -5 1.25 0 0 1.5708</pose>
+        <link name="wall_link">
+            <inertial>
+                <mass>10.0</mass>
+            </inertial>
+            <collision name="collision">
+                <geometry>
+                    <box>
+                        <size>0.2 10 2.5</size>
+                    </box>
+                </geometry>
+            </collision>
+            <visual name="visual">
+                <geometry>
+                    <box>
+                        <size>0.2 10 2.5</size>
+                    </box>
+                </geometry>
+
+                <material>
+                    <ambient>0.5 0.5 0.5 1</ambient>
+                    <diffuse>0.5 0.5 0.5 1</diffuse>
+                    <specular>0.5 0.5 0.5 1</specular>
+                </material>
+            </visual>
+        </link>
+        <static>true</static>
+    </model>
+
+    <!--Plataforma Inicio -->
+    <include> 
+      <uri>model://platform</uri> <name>platform_start</name> <pose>-4 4 0.025 0 0 0</pose>
+    </include>
+
+    <!--Plataforma Final -->
+    <include> 
+      <uri>model://platform</uri> <name>platform_end</name> <pose>-4 -4 0.025 0 0 0</pose>
+    </include>
+    
+    <!-- Aros -->
+    <include> 
+      <uri>model://window</uri> <name>window_1</name> <pose> -2 3 0.25 0 0 0</pose>
+    </include>
+
+    <include> 
+      <uri>model://window</uri> <name>window_2</name> <pose> -1 3 0.25 0 0 0</pose>
+    </include>
+
+    <include> 
+      <uri>model://window</uri> <name>window_3</name> <pose> 0 3 0.25 0 0 0</pose>
+    </include>
+
+    <include> 
+      <uri>model://window</uri> <name>window_4</name> <pose> 1 3 0.25 0 0 0</pose>
+    </include>
+
+    <!--Pizarron-->
+    <model name="whiteboard">
+      <pose> 3 -4.9 1.25 0 0 1.5708</pose>
+        <link name="whiteboard_link">
+            <inertial>
+                <mass>2.0</mass>
+            </inertial>
+            <collision name="collision">
+                <geometry>
+                    <box>
+                        <size>0.05 1.5 1.2</size>
+                    </box>
+                </geometry>
+            </collision>
+            <visual name="visual">
+                <geometry>
+                    <box>
+                        <size>0.05 1.5 1.2</size>
+                    </box>
+              </geometry>
+
+              <material>
+                    <ambient>1 1 1 1</ambient>
+                    <diffuse>1 1 1 1</diffuse>
+                    <specular>1 1 1 1</specular>
+              </material>
+            </visual>
+        </link>
+        <static>true</static>
+    </model>
+
+    <!--Sillas-->
+    <include>
+      <uri>
+        https://fuel.gazebosim.org/1.0/OpenRobotics/models/VisitorChair
+      </uri>
+      <name>chair1</name>
+      <pose>-4.45 1.7 0 0 0 1.5708</pose>
+    </include>
+
+    <include>
+      <uri>
+        https://fuel.gazebosim.org/1.0/OpenRobotics/models/VisitorChair
+      </uri>
+      <name>chair2</name>
+      <pose>-4.45 0.8 0 0 0 1.5708</pose>
+    </include>
+
+    <include>
+      <uri>
+        https://fuel.gazebosim.org/1.0/OpenRobotics/models/VisitorChair
+      </uri>
+      <name>chair3</name>
+      <pose>-4.45 -0.1 0 0 0 1.5708</pose>
+    </include>
+
+    <include>
+      <uri>
+        https://fuel.gazebosim.org/1.0/OpenRobotics/models/VisitorChair
+      </uri>
+      <name>chair4</name>
+      <pose>3.3 4.35 0 0 0 0</pose>
+    </include>
+
+    <!--Columnas-->
+    <include> 
+      <uri>model://column</uri> <name>column_1</name> 
+      <pose>3 1 1.35 0 0 0</pose>
+    </include>
+
+    <include> 
+      <uri>model://column</uri> <name>column_2</name> 
+      <pose>4 -1.5 1.35 0 0 0</pose>
+    </include>
+
+    <include> 
+      <uri>model://column</uri> <name>column_3</name> 
+      <pose>1 -3 1.35 0 0 0</pose>
+    </include>
+    
+  </world>
+</sdf>
