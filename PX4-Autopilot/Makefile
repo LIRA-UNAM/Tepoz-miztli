@@ -35,9 +35,11 @@
 #
 # We depend on our submodules, so we have to prevent attempts to
 # compile without it being present.
-ifeq ($(wildcard .git),)
-    $(error YOU HAVE TO USE GIT TO DOWNLOAD THIS REPOSITORY. ABORTING.)
-endif
+
+#Yo los desactive para que ya no busque la carpeta de .git
+# ifeq ($(wildcard .git),)
+#     $(error YOU HAVE TO USE GIT TO DOWNLOAD THIS REPOSITORY. ABORTING.)
+# endif
 
 # Help
 # --------------------------------------------------------------------
