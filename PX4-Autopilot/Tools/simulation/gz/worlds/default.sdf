@@ -1,0 +1,321 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<sdf version="1.9">
+  <world name="default">
+    
+    <physics type="ode">
+      <max_step_size>0.004</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+      <real_time_update_rate>250</real_time_update_rate>
+    </physics>
+    <gravity>0 0 -9.8</gravity>
+    <magnetic_field>6e-06 2.3e-05 -4.2e-05</magnetic_field>
+    <atmosphere type="adiabatic"/>
+
+    <scene>
+      <grid>false</grid>
+      <ambient>0.4 0.4 0.4 1</ambient>
+      <background>0.7 0.7 0.7 1</background>
+      <shadows>true</shadows>
+    </scene>
+
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>1 1</size>
+            </plane>
+          </geometry>
+          <surface>
+            <friction>
+              <ode/>
+            </friction>
+            <bounce/>
+            <contact/>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>500 500</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>0.8 0.8 0.8 1</ambient>
+            <diffuse>0.8 0.8 0.8 1</diffuse>
+            <specular>0.8 0.8 0.8 1</specular>
+          </material>
+        </visual>
+      </link>
+      <pose>0 0 0 0 -0 0</pose>
+    </model>
+
+    <light name="sunUTC" type="directional">
+      <pose>0 0 500 0 -0 0</pose>
+      <cast_shadows>true</cast_shadows>
+      <intensity>1</intensity>
+      <direction>0.001 0.625 -0.78</direction>
+      <diffuse>0.904 0.904 0.904 1</diffuse>
+      <specular>0.271 0.271 0.271 1</specular>
+      <attenuation>
+        <range>2000</range>
+        <linear>0</linear>
+        <constant>1</constant>
+        <quadratic>0</quadratic>
+      </attenuation>
+    </light>
+
+    <spherical_coordinates>
+      <surface_model>EARTH_WGS84</surface_model>
+      <world_frame_orientation>ENU</world_frame_orientation>
+      <latitude_deg>47.397971057728974</latitude_deg>
+      <longitude_deg> 8.546163739800146</longitude_deg>
+      <elevation>0</elevation>
+    </spherical_coordinates>
+
+    <model name="wall">
+        <pose> 5 0 1.25 0 0 0</pose>
+        <link name="wall_link">
+            <inertial>
+                <mass>10.0</mass>
+            </inertial>
+            <collision name="collision">
+                <geometry>
+                    <box>
+                        <size>0.2 10 2.5</size>
+                    </box>
+                </geometry>
+            </collision>
+            <visual name="visual">
+                <geometry>
+                    <box>
+                        <size>0.2 10 2.5</size>
+                    </box>
+                </geometry>
+                <material>
+                    <ambient>0.5 0.5 0.5 1</ambient>
+                    <diffuse>0.5 0.5 0.5 1</diffuse>
+                    <specular>0.5 0.5 0.5 1</specular>
+                </material>
+            </visual>
+        </link>
+        <static>true</static>
+    </model>
+
+    <model name="wall2">
+        <pose> -5 0 1.25 0 0 0</pose>
+        <link name="wall_link">
+            <inertial>
+                <mass>10.0</mass>
+            </inertial>
+            <collision name="collision">
+                <geometry>
+                    <box>
+                        <size>0.2 10 2.5</size>
+                    </box>
+                </geometry>
+            </collision>
+            <visual name="visual">
+                <geometry>
+                    <box>
+                        <size>0.2 10 2.5</size>
+                    </box>
+                </geometry>
+                <material>
+                    <ambient>0.5 0.5 0.5 1</ambient>
+                    <diffuse>0.5 0.5 0.5 1</diffuse>
+                    <specular>0.5 0.5 0.5 1</specular>
+                </material>
+            </visual>
+        </link>
+        <static>true</static>
+    </model>
+
+    <model name="wall3">
+        <pose> 0 5 1.25 0 0 1.5708</pose>
+        <link name="wall_link">
+            <inertial>
+                <mass>10.0</mass>
+            </inertial>
+            <collision name="collision">
+                <geometry>
+                    <box>
+                        <size>0.2 10 2.5</size>
+                    </box>
+                </geometry>
+            </collision>
+            <visual name="visual">
+                <geometry>
+                    <box>
+                        <size>0.2 10 2.5</size>
+                    </box>
+                </geometry>
+                <material>
+                    <ambient>0.5 0.5 0.5 1</ambient>
+                    <diffuse>0.5 0.5 0.5 1</diffuse>
+                    <specular>0.5 0.5 0.5 1</specular>
+                </material>
+            </visual>
+        </link>
+        <static>true</static>
+    </model>
+
+    <model name="wall4">
+        <pose> 0 -5 1.25 0 0 1.5708</pose>
+        <link name="wall_link">
+            <inertial>
+                <mass>10.0</mass>
+            </inertial>
+            <collision name="collision">
+                <geometry>
+                    <box>
+                        <size>0.2 10 2.5</size>
+                    </box>
+                </geometry>
+            </collision>
+            <visual name="visual">
+                <geometry>
+                    <box>
+                        <size>0.2 10 2.5</size>
+                    </box>
+                </geometry>
+                <material>
+                    <ambient>0.5 0.5 0.5 1</ambient>
+                    <diffuse>0.5 0.5 0.5 1</diffuse>
+                    <specular>0.5 0.5 0.5 1</specular>
+                </material>
+            </visual>
+        </link>
+        <static>true</static>
+    </model>
+
+    <include> 
+      <uri>model://platform</uri> <name>platform_start</name> <pose>-4 4 0.025 0 1.5708 0</pose>
+    </include>
+
+    <include> 
+      <uri>model://platform</uri> <name>platform_end</name> <pose>-4 -4 0.025 0 1.5708 0</pose>
+    </include>
+    
+    <include> 
+      <uri>model://window</uri> <name>window_1</name> <pose> -2 3 0.25 0 0 0</pose>
+    </include>
+
+    <include> 
+      <uri>model://window</uri> <name>window_2</name> <pose> -1 3 0.25 0 0 0</pose>
+    </include>
+
+    <include> 
+      <uri>model://window</uri> <name>window_3</name> <pose> 0 3 0.25 0 0 0</pose>
+    </include>
+
+    <include> 
+      <uri>model://window</uri> <name>window_4</name> <pose> 1 3 0.25 0 0 0</pose>
+    </include>
+
+    <include>
+      <uri>model://swindow</uri> <name>swindow_1</name> <pose> -2 1 0.5 0 0 0</pose> 
+    </include>
+
+    <include>
+      <uri>model://swindow</uri> <name>swindow_2</name> <pose> -1 1 0.5 0 0 0</pose> 
+    </include>
+
+    <include>
+      <uri>model://swindow</uri> <name>swindow_3</name> <pose> 0 1 0.5 0 0 0</pose> 
+    </include>
+
+    <include>
+      <uri>model://swindow</uri> <name>swindow_4</name> <pose> 1 1 0.5 0 0 0</pose> 
+    </include>
+
+    <include>
+      <uri>model://small2_window</uri> <name>small_window_1</name> <pose> -2 -1 0.75 0 0 0</pose> 
+    </include>
+
+    <include>
+      <uri>model://small2_window</uri> <name>small_window_2</name> <pose> -1 -1 0.75 0 0 0</pose> 
+    </include>
+
+    <include>
+      <uri>model://small2_window</uri> <name>small_window_3</name> <pose> 0 -1 0.75 0 0 0</pose> 
+    </include>
+
+    <include>
+      <uri>model://small2_window</uri> <name>small_window_4</name> <pose> 1 -1 0.75 0 0 0</pose> 
+    </include>
+
+
+    <model name="whiteboard">
+      <pose> 3 -4.9 1.25 0 0 1.5708</pose>
+        <link name="whiteboard_link">
+            <inertial>
+                <mass>2.0</mass>
+            </inertial>
+            <collision name="collision">
+                <geometry>
+                    <box>
+                        <size>0.05 1.5 1.2</size>
+                    </box>
+                </geometry>
+            </collision>
+            <visual name="visual">
+                <geometry>
+                    <box>
+                        <size>0.05 1.5 1.2</size>
+                    </box>
+              </geometry>
+              <material>
+                    <ambient>1 1 1 1</ambient>
+                    <diffuse>1 1 1 1</diffuse>
+                    <specular>1 1 1 1</specular>
+              </material>
+            </visual>
+        </link>
+        <static>true</static>
+    </model>
+
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/VisitorChair</uri>
+      <name>chair1</name>
+      <pose>-4.45 1.7 0 0 0 1.5708</pose>
+    </include>
+
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/VisitorChair</uri>
+      <name>chair2</name>
+      <pose>-4.45 0.8 0 0 0 1.5708</pose>
+    </include>
+
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/VisitorChair</uri>
+      <name>chair3</name>
+      <pose>-4.45 -0.1 0 0 0 1.5708</pose>
+    </include>
+
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/VisitorChair</uri>
+      <name>chair4</name>
+      <pose>3.3 4.35 0 0 0 0</pose>
+    </include>
+
+    <include> 
+      <uri>model://column</uri> <name>column_1</name> 
+      <pose>3 1 1.35 0 0 0</pose>
+    </include>
+
+    <include> 
+      <uri>model://column</uri> <name>column_2</name> 
+      <pose>4 -1.5 1.35 0 0 0</pose>
+    </include>
+
+    <include> 
+      <uri>model://column</uri> <name>column_3</name> 
+      <pose>1 -3 1.35 0 0 0</pose>
+    </include>
+
+  </world>
+</sdf>
