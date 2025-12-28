@@ -41,7 +41,7 @@ def generate_launch_description():
         cmd=['bash', '-c', 
              f'source {ros_setup_path} && '
              f'source {px4_ros_com_setup_path} && '
-             f'make px4_sitl gz_x500'
+             f'make px4_sitl gz_x500_my_world'
             ],
         cwd=px4_autopilot_dir, 
         output='screen',

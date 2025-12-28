@@ -36,15 +36,16 @@ def generate_launch_description():
     )
     qgc_path = LaunchConfiguration('qgc_path')
 
+    
     #Lanzamiento PX4 SITL + Gazebo
     start_sitl_cmd = ExecuteProcess(
         cmd=['bash', '-c',
              f'source {ros_setup_path} && '
              f'source {px4_ros_com_setup_path} && '
-             f'make px4_sitl gz_x500_depth_my_world' #f'make px4_sitl gz_x500'
-             ],
-             cwd=px4_autopilot_dir,
-             output='screen',
+             f'make px4_sitl gz_x500_mono_cam_down_my_world'             
+            ],
+            cwd=px4_autopilot_dir,
+            output='screen',
     )
 
     #Iniciar QGroundControl
@@ -97,30 +98,23 @@ def generate_launch_description():
         separator=':'
     )
 
-    #RGB Bridge
-    rgb_camera_bridge = Node(
+    # Puente para la Mono Cam (Cámara inferior)
+    down_camera_bridge = Node(
         package='ros_gz_bridge',
         executable='parameter_bridge',
-        name='camera_bridge_rgb',
+        name='bridge_down_cam',
         output='screen',
         arguments=[
-            '/world/default/model/x500_depth_0/link/camera_link/sensor/IMX214/image@sensor_msgs/msg/Image@gz.msgs.Image'
+            # 1. Video (Topic corto definido en el SDF)
+            '/camera/image@sensor_msgs/msg/Image@gz.msgs.Image',
+            
+            # 2. Info de la cámara (Matriz de calibración, etc.)
+            '/camera/camera_info@sensor_msgs/msg/CameraInfo@gz.msgs.CameraInfo'
         ],
         remappings=[
-            ('/world/default/model/x500_depth_0/link/camera_link/sensor/IMX214/image', '/camera/image_raw')
-        ]
-    )
-
-    depth_camera_bridge=Node(
-        package='ros_gz_bridge',
-        executable='parameter_bridge',
-        name='camera_bridge_depth',
-        output='screen',
-        arguments=[
-            '/world/default/model/x500_depth_0/link/camera_link/sensor/Stereo0V7251/depth_image@sensor_msgs/msg/Image@gz.msgs.Image'
-        ],
-        remappings=[
-            ('/world/default/model/x500_depth_0/link/camera_link/sensor/StereoOV7251/depth_image', '/depth_camera/image_raw')
+            # Salida en ROS 2
+            ('/camera/image', '/down_camera/image_raw'),
+            ('/camera/camera_info', '/down_camera/camera_info')
         ]
     )
 
@@ -131,6 +125,5 @@ def generate_launch_description():
         start_qgc_cmd,
         start_microxrce_agent_cmd,
         start_offboard_control_cmd,
-        rgb_camera_bridge,
-        depth_camera_bridge
+        down_camera_bridge
     ])

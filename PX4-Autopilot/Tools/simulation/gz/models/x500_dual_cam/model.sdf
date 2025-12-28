@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sdf version='1.9'>
+  <model name='x500_dual_cam'>
+
+    <include merge='true'>
+      <uri>model://x500</uri>
+    </include>
+
+    <include>
+      <name>front_camera</name>
+      <uri>model://OakD-Lite</uri>
+      <pose>.12 .03 .242 0 0 0</pose>
+    </include>
+
+    <joint name="front_camera_joint" type="fixed">
+      <parent>base_link</parent>
+      <child>front_camera::camera_link</child>
+    </joint>
+
+    <include>
+      <name>down_camera</name>
+      <uri>model://mono_cam</uri>
+      <pose>0 0 .10 0 1.5707 0</pose>
+    </include>
+
+    <joint name="down_camera_joint" type="fixed">
+      <parent>base_link</parent>
+      <child>down_camera::link</child>
+    </joint>
+
+  </model>
+</sdf>
