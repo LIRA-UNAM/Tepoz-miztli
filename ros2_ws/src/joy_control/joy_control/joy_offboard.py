@@ -11,8 +11,8 @@ class JoyOffboardControl(Node):
 
         self.AXIS_YAW = 0           #Left Stick L/R
         self.AXIS_THROTTLE = 1      #Left Stick U/D
-        self.AXIS_ROLL = 3          #Right Stick L/R
-        self.AXIS_PITCH = 2         #Right Stick U/D
+        self.AXIS_ROLL = 2          #Right Stick L/R
+        self.AXIS_PITCH = 3         #Right Stick U/D
 
         self.BTN_ARM = 0            
         self.BTN_DISARM = 1
@@ -59,8 +59,8 @@ class JoyOffboardControl(Node):
         yaw_input = apply_deadzone(msg.axes[self.AXIS_YAW])
 
 
-        self.cmd_vel.linear.x = pitch_input * 5.0
-        self.cmd_vel.linear.y = -roll_input * 5.0
+        self.cmd_vel.linear.x = roll_input * 5.0
+        self.cmd_vel.linear.y = pitch_input * 5.0
         self.cmd_vel.linear.z = -throttle_input * 2.0
         self.cmd_vel.angular.z = -yaw_input * 1.5
 
