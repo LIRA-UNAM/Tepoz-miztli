@@ -1,0 +1,218 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sdf version="1.9">
+  <world name="vio">
+    
+    <physics type="ode">
+      <max_step_size>0.004</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+      <real_time_update_rate>250</real_time_update_rate>
+    </physics>
+    <gravity>0 0 -9.8</gravity>
+    <magnetic_field>6e-06 2.3e-05 -4.2e-05</magnetic_field>
+    <atmosphere type="adiabatic"/>
+
+    <scene>
+      <grid>false</grid>
+      <ambient>0.4 0.4 0.4 1</ambient>
+      <background>0.7 0.7 0.7 1</background>
+      <shadows>true</shadows>
+    </scene>
+
+    <include>
+      <uri>model://vio_field</uri> <name>soccer_field</name> <pose>0 0 0 0 0 0</pose>
+    </include> 
+
+    <light name="sunUTC" type="directional">
+      <pose>0 0 500 0 -0 0</pose>
+      <cast_shadows>true</cast_shadows>
+      <intensity>1</intensity>
+      <direction>0.001 0.625 -0.78</direction>
+      <diffuse>0.904 0.904 0.904 1</diffuse>
+      <specular>0.271 0.271 0.271 1</specular>
+    </light>
+
+    <spherical_coordinates>
+      <surface_model>EARTH_WGS84</surface_model>
+      <world_frame_orientation>ENU</world_frame_orientation>
+      <latitude_deg>47.397971</latitude_deg>
+      <longitude_deg>8.546163</longitude_deg>
+      <elevation>0</elevation>
+    </spherical_coordinates>
+
+    <model name="center_gold_sphere">
+      <pose>1.5 -1.0 0.25 0 0 0</pose>
+      <static>true</static>
+      <link name="link">
+        <visual name="v">
+          <geometry><sphere><radius>0.25</radius></sphere></geometry>
+          <material><ambient>1 0.8 0 1</ambient><diffuse>1 0.8 0 1</diffuse></material>
+        </visual>
+        <collision name="c">
+          <geometry><sphere><radius>0.25</radius></sphere></geometry>
+        </collision>
+      </link>
+    </model>
+
+    <model name="center_silver_box">
+      <pose>1.5 1.0 0.25 0 0 0</pose>
+      <static>true</static>
+      <link name="link">
+        <visual name="v">
+          <geometry><box><size>0.5 0.5 0.5</size></box></geometry>
+          <material><ambient>0.8 0.8 0.8 1</ambient><diffuse>0.8 0.8 0.8 1</diffuse></material>
+        </visual>
+        <collision name="c">
+          <geometry><box><size>0.5 0.5 0.5</size></box></geometry>
+        </collision>
+      </link>
+    </model>
+
+    <model name="center_bronze_cyl">
+      <pose>-1.5 0 0.25 0 0 0</pose>
+      <static>true</static>
+      <link name="link">
+        <visual name="v">
+          <geometry><cylinder><radius>0.25</radius><length>0.5</length></cylinder></geometry>
+          <material><ambient>0.8 0.5 0.2 1</ambient><diffuse>0.8 0.5 0.2 1</diffuse></material>
+        </visual>
+        <collision name="c">
+          <geometry><cylinder><radius>0.25</radius><length>0.5</length></cylinder></geometry>
+        </collision>
+      </link>
+    </model>
+
+    <model name="box1_white">
+      <pose>0 5 0.25 0 0 0</pose>
+      <static>true</static>
+      <link name="link"><visual name="v"><geometry><box><size>0.5 0.5 0.5</size></box></geometry><material><ambient>1 1 1 1</ambient><diffuse>1 1 1 1</diffuse></material></visual><collision name="c"><geometry><box><size>0.5 0.5 0.5</size></box></geometry></collision></link>
+    </model>
+
+    <model name="box2_blue">
+      <pose>0 -5 0.25 0 0 0</pose>
+      <static>true</static>
+      <link name="link"><visual name="v"><geometry><box><size>0.5 0.5 0.5</size></box></geometry><material><ambient>0 0 1 1</ambient><diffuse>0 0 1 1</diffuse></material></visual><collision name="c"><geometry><box><size>0.5 0.5 0.5</size></box></geometry></collision></link>
+    </model>
+
+    <model name="box3_red">
+      <pose>5 0 0.25 0 0 0</pose>
+      <static>true</static>
+      <link name="link"><visual name="v"><geometry><box><size>0.5 0.5 0.5</size></box></geometry><material><ambient>1 0 0 1</ambient><diffuse>1 0 0 1</diffuse></material></visual><collision name="c"><geometry><box><size>0.5 0.5 0.5</size></box></geometry></collision></link>
+    </model>
+
+    <model name="box4_cyan">
+      <pose>-5 5 0.25 0 0 0</pose>
+      <static>true</static>
+      <link name="link"><visual name="v"><geometry><box><size>0.5 0.5 0.5</size></box></geometry><material><ambient>0 1 1 1</ambient><diffuse>0 1 1 1</diffuse></material></visual><collision name="c"><geometry><box><size>0.5 0.5 0.5</size></box></geometry></collision></link>
+    </model>
+
+    <model name="box5_orange">
+      <pose>8 4 0.25 0 0 0</pose>
+      <static>true</static>
+      <link name="link"><visual name="v"><geometry><box><size>0.5 0.5 0.5</size></box></geometry><material><ambient>1 0.5 0 1</ambient><diffuse>1 0.5 0 1</diffuse></material></visual><collision name="c"><geometry><box><size>0.5 0.5 0.5</size></box></geometry></collision></link>
+    </model>
+
+    <model name="box6_purple">
+      <pose>-8 -4 0.25 0 0 0</pose>
+      <static>true</static>
+      <link name="link"><visual name="v"><geometry><box><size>0.5 0.5 0.5</size></box></geometry><material><ambient>0.5 0 0.5 1</ambient><diffuse>0.5 0 0.5 1</diffuse></material></visual><collision name="c"><geometry><box><size>0.5 0.5 0.5</size></box></geometry></collision></link>
+    </model>
+
+    <model name="box7_grey">
+      <pose>10 -8 0.25 0 0 0</pose>
+      <static>true</static>
+      <link name="link"><visual name="v"><geometry><box><size>0.5 0.5 0.5</size></box></geometry><material><ambient>0.3 0.3 0.3 1</ambient><diffuse>0.3 0.3 0.3 1</diffuse></material></visual><collision name="c"><geometry><box><size>0.5 0.5 0.5</size></box></geometry></collision></link>
+    </model>
+    
+    <model name="box8_teal">
+      <pose>-10 0 0.25 0 0 0</pose>
+      <static>true</static>
+      <link name="link"><visual name="v"><geometry><box><size>0.5 0.5 0.5</size></box></geometry><material><ambient>0 0.5 0.5 1</ambient><diffuse>0 0.5 0.5 1</diffuse></material></visual><collision name="c"><geometry><box><size>0.5 0.5 0.5</size></box></geometry></collision></link>
+    </model>
+
+
+    <model name="cyl1_green">
+      <pose>-3 -3 0.25 0 0 0</pose>
+      <static>true</static>
+      <link name="link"><visual name="v"><geometry><cylinder><radius>0.25</radius><length>0.5</length></cylinder></geometry><material><ambient>0 1 0 1</ambient><diffuse>0 1 0 1</diffuse></material></visual><collision name="c"><geometry><cylinder><radius>0.25</radius><length>0.5</length></cylinder></geometry></collision></link>
+    </model>
+
+    <model name="cyl2_yellow">
+      <pose>3 3 0.25 0 0 0</pose>
+      <static>true</static>
+      <link name="link"><visual name="v"><geometry><cylinder><radius>0.25</radius><length>0.5</length></cylinder></geometry><material><ambient>1 1 0 1</ambient><diffuse>1 1 0 1</diffuse></material></visual><collision name="c"><geometry><cylinder><radius>0.25</radius><length>0.5</length></cylinder></geometry></collision></link>
+    </model>
+
+    <model name="cyl3_black">
+      <pose>-7 0 0.25 0 0 0</pose>
+      <static>true</static>
+      <link name="link"><visual name="v"><geometry><cylinder><radius>0.25</radius><length>0.5</length></cylinder></geometry><material><ambient>0 0 0 1</ambient><diffuse>0 0 0 1</diffuse></material></visual><collision name="c"><geometry><cylinder><radius>0.25</radius><length>0.5</length></cylinder></geometry></collision></link>
+    </model>
+
+    <model name="cyl4_pink">
+      <pose>7 -7 0.25 0 0 0</pose>
+      <static>true</static>
+      <link name="link"><visual name="v"><geometry><cylinder><radius>0.25</radius><length>0.5</length></cylinder></geometry><material><ambient>1 0.4 0.7 1</ambient><diffuse>1 0.4 0.7 1</diffuse></material></visual><collision name="c"><geometry><cylinder><radius>0.25</radius><length>0.5</length></cylinder></geometry></collision></link>
+    </model>
+
+    <model name="cyl5_lime">
+      <pose>-4 8 0.25 0 0 0</pose>
+      <static>true</static>
+      <link name="link"><visual name="v"><geometry><cylinder><radius>0.25</radius><length>0.5</length></cylinder></geometry><material><ambient>0.5 1 0 1</ambient><diffuse>0.5 1 0 1</diffuse></material></visual><collision name="c"><geometry><cylinder><radius>0.25</radius><length>0.5</length></cylinder></geometry></collision></link>
+    </model>
+
+    <model name="cyl6_brown">
+      <pose>2 -9 0.25 0 0 0</pose>
+      <static>true</static>
+      <link name="link"><visual name="v"><geometry><cylinder><radius>0.25</radius><length>0.5</length></cylinder></geometry><material><ambient>0.6 0.3 0 1</ambient><diffuse>0.6 0.3 0 1</diffuse></material></visual><collision name="c"><geometry><cylinder><radius>0.25</radius><length>0.5</length></cylinder></geometry></collision></link>
+    </model>
+
+    <model name="cyl7_navy">
+      <pose>-9 -9 0.25 0 0 0</pose>
+      <static>true</static>
+      <link name="link"><visual name="v"><geometry><cylinder><radius>0.25</radius><length>0.5</length></cylinder></geometry><material><ambient>0 0 0.5 1</ambient><diffuse>0 0 0.5 1</diffuse></material></visual><collision name="c"><geometry><cylinder><radius>0.25</radius><length>0.5</length></cylinder></geometry></collision></link>
+    </model>
+
+    <model name="cone1_blue"> 
+      <pose>4 -4 0.25 0 0 0</pose>
+      <static>true</static>
+      <link name="link"><visual name="v"><geometry><cone><radius>0.25</radius><length>0.5</length></cone></geometry><material><ambient>0 0 1 1</ambient><diffuse>0 0 1 1</diffuse></material></visual><collision name="c"><geometry><cone><radius>0.25</radius><length>0.5</length></cone></geometry></collision></link>
+    </model>
+
+    <model name="cone2_magenta"> 
+      <pose>-4 4 0.25 0 0 0</pose>
+      <static>true</static>
+      <link name="link"><visual name="v"><geometry><cone><radius>0.25</radius><length>0.5</length></cone></geometry><material><ambient>1 0 1 1</ambient><diffuse>1 0 1 1</diffuse></material></visual><collision name="c"><geometry><cone><radius>0.25</radius><length>0.5</length></cone></geometry></collision></link>
+    </model>
+
+    <model name="cone3_red"> 
+      <pose>9 0 0.25 0 0 0</pose>
+      <static>true</static>
+      <link name="link"><visual name="v"><geometry><cone><radius>0.25</radius><length>0.5</length></cone></geometry><material><ambient>0.8 0 0 1</ambient><diffuse>0.8 0 0 1</diffuse></material></visual><collision name="c"><geometry><cone><radius>0.25</radius><length>0.5</length></cone></geometry></collision></link>
+    </model>
+
+    <model name="cone4_cyan"> 
+      <pose>-6 -6 0.25 0 0 0</pose>
+      <static>true</static>
+      <link name="link"><visual name="v"><geometry><cone><radius>0.25</radius><length>0.5</length></cone></geometry><material><ambient>0 0.8 0.8 1</ambient><diffuse>0 0.8 0.8 1</diffuse></material></visual><collision name="c"><geometry><cone><radius>0.25</radius><length>0.5</length></cone></geometry></collision></link>
+    </model>
+
+    <model name="cone5_gold"> 
+      <pose>6 8 0.25 0 0 0</pose>
+      <static>true</static>
+      <link name="link"><visual name="v"><geometry><cone><radius>0.25</radius><length>0.5</length></cone></geometry><material><ambient>1 0.8 0 1</ambient><diffuse>1 0.8 0 1</diffuse></material></visual><collision name="c"><geometry><cone><radius>0.25</radius><length>0.5</length></cone></geometry></collision></link>
+    </model>
+
+    <model name="cone6_white"> 
+      <pose>-9 5 0.25 0 0 0</pose>
+      <static>true</static>
+      <link name="link"><visual name="v"><geometry><cone><radius>0.25</radius><length>0.5</length></cone></geometry><material><ambient>0.9 0.9 0.9 1</ambient><diffuse>0.9 0.9 0.9 1</diffuse></material></visual><collision name="c"><geometry><cone><radius>0.25</radius><length>0.5</length></cone></geometry></collision></link>
+    </model>
+
+    <model name="cone7_violet"> 
+      <pose>0 9 0.25 0 0 0</pose>
+      <static>true</static>
+      <link name="link"><visual name="v"><geometry><cone><radius>0.25</radius><length>0.5</length></cone></geometry><material><ambient>0.6 0 1 1</ambient><diffuse>0.6 0 1 1</diffuse></material></visual><collision name="c"><geometry><cone><radius>0.25</radius><length>0.5</length></cone></geometry></collision></link>
+    </model>
+    
+  </world>
+</sdf>
