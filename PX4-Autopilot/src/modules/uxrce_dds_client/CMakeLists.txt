@@ -39,7 +39,7 @@ else()
 	set(microxrceddsclient_src_dir   ${CMAKE_CURRENT_SOURCE_DIR}/Micro-XRCE-DDS-Client)
 	set(microxrceddsclient_build_dir ${CMAKE_CURRENT_BINARY_DIR})
 
-	px4_add_git_submodule(TARGET git_micro_xrce_dds_client PATH "${microxrceddsclient_src_dir}")
+	# px4_add_git_submodule(TARGET git_micro_xrce_dds_client PATH "${microxrceddsclient_src_dir}")
 
 	# If a toolchain file is given, explicitly define its path when building the Micro-XRCE-DDS-CLient
 	if(CMAKE_TOOLCHAIN_FILE MATCHES "cmake$")
@@ -90,7 +90,7 @@ else()
 			-DCMAKE_TOOLCHAIN_FILE:STRING=${microxrceddsclient_toolchain}
 		BUILD_BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/${lib_dir}/libmicroxrcedds_client.a
 		BUILD_BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/${lib_dir}/libmicrocdr.a
-		DEPENDS prebuild_targets git_micro_xrce_dds_client
+		DEPENDS prebuild_targets #git_micro_xrce_dds_client (yo la comente)
 		LOG_CONFIGURE true
 		LOG_BUILD true
 		LOG_INSTALL true
@@ -145,7 +145,7 @@ else()
 			srv_base.cpp
 			srv_base.h
 		DEPENDS
-			git_micro_xrce_dds_client
+			# git_micro_xrce_dds_client
 			libmicroxrceddsclient_project
 			microxrceddsclient
 			libmicroxrceddsclient
