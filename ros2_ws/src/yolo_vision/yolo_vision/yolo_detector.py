@@ -1,6 +1,7 @@
 import rclpy 
 from rclpy.node import Node
 from sensor_msgs.msg import Image
+from geometry_msgs.msg import Point #Envió de coordenadas
 from cv_bridge import CvBridge, CvBridgeError
 import cv2
 from ultralytics import YOLO
@@ -22,13 +23,18 @@ class YoloNode(Node):
         # Configuración
         self.camera_topic = '/front_camera/image_raw'
         self.detection_topic = 'yolo/detections'
+        self.coord_topic = 'yolo/coordinates'
 
         #Comunicación
         self.bridge = CvBridge()
 
         self.subscription = self.create_subscription(Image, self.camera_topic, self.image_callback, 10)
 
-        self.publisher = self.create_publisher(Image, self.detection_topic, 10)
+        #Imagen que percibe
+        self.img_publisher = self.create_publisher(Image, self.detection_topic, 10)
+
+        #Coordenadas 
+        self.coord_publisher = self.create_publisher(Point, self.coord_topic, 10)
 
         self.get_logger().info(f"Subscrito a: {self.camera_topic}")
         self.get_logger().info(f"Detecciones publicadas en: {self.detection_topic}")
@@ -38,16 +44,32 @@ class YoloNode(Node):
             return
         
         try:
+            #Se convierte msg de ROS a imagen de OpenCV
             cv_image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
 
             results = self.model(cv_image, verbose=False, conf=0.5)
+
+            #Procesamiento de los datos en vuelo
+            if len(results) > 0 and len(results[0].boxes) > 0:
+                best_box = results[0].boxes[0]
+
+                coords = best_box.xywh[0].cpu().numpy()
+                x_center, y_center, width, height = coords
+
+                point_msg = Point()
+                point_msg.x = float(x_center)
+                point_msg.y = float(y_center)
+                point_msg.z = float(width * height) #Calculo del área
+                self.coord_publisher.publish(point_msg)
+                self.get_logger().info(f"Gate detectado en: X={x_center:.1f}, Y={y_center:.1f}, Area={point_msg.z:.0f}")
+
 
             annotated_frame = results[0].plot()
 
             output_msg = self.bridge.cv2_to_imgmsg(annotated_frame, "bgr8")
             output_msg.header = msg.header
 
-            self.publisher.publish(output_msg)
+            self.img_publisher.publish(output_msg)
 
         except CvBridgeError as e:
             self.get_logger().error(f"CvBridge Error: {e}")

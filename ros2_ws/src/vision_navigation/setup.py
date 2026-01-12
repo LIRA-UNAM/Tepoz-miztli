@@ -1,8 +1,6 @@
 from setuptools import find_packages, setup
-import os
-from glob import glob
 
-package_name = 'yolo_vision'
+package_name = 'vision_navigation'
 
 setup(
     name=package_name,
@@ -12,12 +10,11 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-        (os.path.join('share', package_name, 'launch'), glob('launch/*.py'))
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='humubuntu',
-    maintainer_email='dragonoidhor@gmail.com',
+    maintainer='quique',
+    maintainer_email='enriquemedranorabak@hotmail.com',
     description='TODO: Package description',
     license='TODO: License declaration',
     extras_require={
@@ -27,8 +24,6 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'yolo_node = yolo_vision.yolo_detector:main',
-            'auto_pilot = yolo_vision.vision_navigation:main'
         ],
     },
 )

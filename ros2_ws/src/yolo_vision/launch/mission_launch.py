@@ -46,6 +46,7 @@ def generate_launch_description():
             )
         ]
     )
+
     yolo_node = TimerAction(
         period=8.0,
         actions=[
@@ -59,6 +60,19 @@ def generate_launch_description():
         ]
     )
 
+    # auto_pilot = TimerAction(
+    #     period=10.0,
+    #     actions=[
+    #         Node(
+    #             package='yolo_vision',
+    #             executable='auto_pilot',
+    #             name='vision_navigation',
+    #             output='screen',
+    #             parameters=[{'use_sim_time':True}]
+    #         )
+    #     ]
+    # )
+
     rqt_view = Node(
         package='rqt_image_view',
         executable='rqt_image_view',
@@ -66,11 +80,26 @@ def generate_launch_description():
         arguments=['/yolo/detections']
     )
 
+    # mavros_node = Node(
+    #     package='mavros',
+    #     executable='mavros_node',
+    #     output='screen',
+    #     parameters=[
+    #         {'fcu_url': 'udp://:14540@127.0.0.1:14557'}, # Conexión estándar SITL
+    #         {'system_id': 1},
+    #         {'component_id': 1},
+    #         {'target_system_id': 1},
+    #         {'target_component_id': 1},
+    #     ]
+    # )
+
     return LaunchDescription([
         qgc_path_arg,
         set_python_path,
         start_simulation,
         joy_logic_node,
         yolo_node,
+        # auto_pilot,
+        # mavros_node,
         rqt_view
     ])
