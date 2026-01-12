@@ -121,4 +121,5 @@ px4_add_romfs_files(
 
 	# [22000, 22999] Reserve for custom models
 	22000_gz_x500_dual_cam
+	22001_gz_x500_cam_down
 )

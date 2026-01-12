@@ -42,7 +42,7 @@ def generate_launch_description():
         cmd=['bash', '-c',
              f'source {ros_setup_path} && '
              f'source {px4_ros_com_setup_path} && '
-             f'make px4_sitl gz_x500_mono_cam_down_vio'             
+             f'make px4_sitl gz_x500_cam_down_vio'             
             ],
             cwd=px4_autopilot_dir,
             output='screen',
@@ -74,21 +74,13 @@ def generate_launch_description():
         ]
     )
 
-    #Lanzar el node de prueba offboard_control
-    start_offboard_control_cmd = TimerAction(
-        period=30.0,
-        actions=[
-            ExecuteProcess(
-                cmd=['bash', '-c',
-                     f'source {ros_setup_path} &&'
-                     f'source {px4_ros_com_setup_path} &&'
-                     f'source {drone_ws_setup_path} &&'
-                     f'ros2 run pix_commander_pkg commander' 
-                     ], #Depende del nodo se puede cambiar el nodo iniciado
-                output='screen', 
-            )
-        ]
+    joy_driver = Node(
+        package='joy',
+        executable='joy_node',
+        name='joy_node',
+        output='screen'
     )
+
 
     #Iniciar los modelos del mundo
     set_models = AppendEnvironmentVariable(
@@ -99,24 +91,24 @@ def generate_launch_description():
     )
 
     # Puente para la Mono Cam (Cámara inferior)
-    down_camera_bridge = Node(
-        package='ros_gz_bridge',
-        executable='parameter_bridge',
-        name='bridge_down_cam',
-        output='screen',
-        arguments=[
-            # 1. Video (Topic corto definido en el SDF)
-            '/camera/image@sensor_msgs/msg/Image@gz.msgs.Image',
+    # down_camera_bridge = Node(
+    #     package='ros_gz_bridge',
+    #     executable='parameter_bridge',
+    #     name='bridge_down_cam',
+    #     output='screen',
+    #     arguments=[
+    #         # 1. Video (Topic corto definido en el SDF)
+    #         '/camera/image@sensor_msgs/msg/Image@gz.msgs.Image',
             
-            # 2. Info de la cámara (Matriz de calibración, etc.)
-            '/camera/camera_info@sensor_msgs/msg/CameraInfo@gz.msgs.CameraInfo'
-        ],
-        remappings=[
-            # Salida en ROS 2
-            ('/camera/image', '/down_camera/image_raw'),
-            ('/camera/camera_info', '/down_camera/camera_info')
-        ]
-    )
+    #         # 2. Info de la cámara (Matriz de calibración, etc.)
+    #         '/camera/camera_info@sensor_msgs/msg/CameraInfo@gz.msgs.CameraInfo'
+    #     ],
+    #     remappings=[
+    #         # Salida en ROS 2
+    #         ('/camera/image', '/down_camera/image_raw'),
+    #         ('/camera/camera_info', '/down_camera/camera_info')
+    #     ]
+    # )
 
     return LaunchDescription([
         set_models,
@@ -124,6 +116,5 @@ def generate_launch_description():
         start_sitl_cmd,
         start_qgc_cmd,
         start_microxrce_agent_cmd,
-        start_offboard_control_cmd,
-        down_camera_bridge
+        joy_driver
     ])

@@ -70,21 +70,6 @@ def generate_launch_description():
         ]
     )
 
-    # start_offboard_control_cmd = TimerAction(
-    #     period=30.0,    
-    #     actions=[
-    #         ExecuteProcess(
-    #             cmd=['bash', '-c',
-    #                  f'source {ros_setup_path} && '
-    #                  f'source {px4_ros_com_setup_path} && '
-    #                  f'source {drone_ws_setup_path} && '
-    #                  f'ros2 run px4_ros_com offboard_control' 
-    #                  ], 
-    #             output='screen', 
-    #         )
-    #     ]
-    # )
-
     joy_driver = Node(
         package='joy',
         executable='joy_node',
@@ -158,7 +143,6 @@ def generate_launch_description():
         start_sitl_cmd,
         start_qgc_cmd,
         start_microxrce_agent_cmd,
-        #start_offboard_control_cmd,
         joy_driver,
         front_depth_bridge,
         front_rgb_bridge,

@@ -1,0 +1,15 @@
+#!/bin/sh
+#
+# @name x500 Cam Down
+#
+# @type Quadrotor x
+# @class Copter
+#
+# @maintainer Humubuntu
+#
+
+# 1. Heredar toda la configuración del x500 base (ID 4001)
+. ${R}etc/init.d-posix/airframes/4001_gz_x500
+
+# 2. Sobreescribir el modelo visual para usar el tuyo
+PX4_SIM_MODEL=${PX4_SIM_MODEL:=x500_cam_down}
