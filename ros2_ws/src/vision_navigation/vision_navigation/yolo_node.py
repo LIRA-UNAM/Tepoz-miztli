@@ -1,172 +1,136 @@
-import rclpy
+import rclpy 
 from rclpy.node import Node
-from geometry_msgs.msg import Point, Twist, PoseStamped
-from mavros_msgs.msg import State
-from mavros_msgs.srv import CommandBool, SetMode
-import time
+from sensor_msgs.msg import Image
+from geometry_msgs.msg import Point 
+from cv_bridge import CvBridge, CvBridgeError
+import cv2
+from ultralytics import YOLO
+import os
+import numpy as np
+import message_filters
 
-class AutoNavigationNode(Node):
+class YoloNode(Node):
     def __init__(self):
-        super().__init__('auto_navigation_node')
+        super().__init__('yolo_node')
 
-        # --- CONFIGURACIÓN DE OBJETIVO ---
-        self.target_altitude = 2.0  # Metros a los que quieres subir
-        self.img_width = 640.0 
-        self.target_x = self.img_width / 2.0
-        self.target_area = 80000.0
+        weights_dir = os.path.expanduser('~/Tepoz-miztli/ros2_ws/weights')
+        model_path = os.path.join(weights_dir, 'best.pt')
+        self.model = YOLO(model_path)
+
+        self.color_topic = '/camera/camera/color/image_raw'
+        self.depth_topic = '/camera/camera/aligned_depth_to_color/image_raw'
         
-        # --- GANANCIAS PID ---
-        self.kp_yaw = 0.002
-        self.kp_alt = 0.005
-        self.kp_fwd = 0.00005
+        self.detection_topic = 'yolo/detections'
+        self.coord_topic = 'yolo/coordinates'
 
-        # --- VARIABLES DE ESTADO ---
-        self.current_state = State()
-        self.current_pose = PoseStamped()
-        self.is_gate_detected = False
-        self.last_detection_time = 0
-        
-        # Estados de la misión
-        # 0: Espera/Inicialización
-        # 1: Despegando (Subiendo a 2m)
-        # 2: Buscando/Siguiendo Gate (YOLO)
-        self.mission_state = 0 
-        self.last_req = time.time() # Para controlar los intentos de servicio
+        self.bridge = CvBridge()
 
-        # --- SUSCRIPTORES ---
-        self.coord_sub = self.create_subscription(Point, 'yolo/coordinates', self.coord_callback, 10)
-        self.state_sub = self.create_subscription(State, 'mavros/state', self.state_callback, 10)
-        # Necesitamos la posición local para saber la altura
-        self.pose_sub = self.create_subscription(PoseStamped, 'mavros/local_position/pose', self.pose_callback, 10)
+        self.color_sub = message_filters.Subscriber(self, Image, self.color_topic)
+        self.depth_sub = message_filters.Subscriber(self, Image, self.depth_topic)
 
-        # --- PUBLICADOR ---
-        self.vel_pub = self.create_publisher(Twist, '/mavros/setpoint_velocity/cmd_vel_unstamped', 10)
+        self.ts = message_filters.ApproximateTimeSynchronizer(
+            [self.color_sub, self.depth_sub], queue_size=10, slop=0.1)
+        self.ts.registerCallback(self.image_callback)
 
-        # --- CLIENTES DE SERVICIO (Para Armar y poner Modo) ---
-        self.arming_client = self.create_client(CommandBool, 'mavros/cmd/arming')
-        self.set_mode_client = self.create_client(SetMode, 'mavros/set_mode')
+        self.img_publisher = self.create_publisher(Image, self.detection_topic, 10)
+        self.coord_publisher = self.create_publisher(Point, self.coord_topic, 10)
 
-        # Esperar a que los servicios estén listos
-        while not self.arming_client.wait_for_service(timeout_sec=1.0):
-            self.get_logger().info('Esperando servicio arming...')
-        while not self.set_mode_client.wait_for_service(timeout_sec=1.0):
-            self.get_logger().info('Esperando servicio set_mode...')
 
-        # Loop principal (20Hz)
-        self.timer = self.create_timer(0.05, self.control_loop)
-        self.cmd_vel = Twist()
-
-        self.get_logger().info("Nodo de Navegación Autónoma Iniciado")
-
-    # --- CALLBACKS ---
-    def state_callback(self, msg):
-        self.current_state = msg
-
-    def pose_callback(self, msg):
-        self.current_pose = msg
-
-    def coord_callback(self, msg):
-        self.last_detection_time = time.time()
-        self.is_gate_detected = True
-        self.latest_yolo_msg = msg # Guardamos el dato para usarlo en el loop
-
-    # --- LÓGICA PRINCIPAL ---
-    def control_loop(self):
-        # MAVROS necesita recibir setpoints continuamente antes de cambiar a OFFBOARD
-        # Así que siempre publicamos algo, aunque sea ceros.
-        
-        if self.mission_state == 0:
-            self.handle_initialization()
-        elif self.mission_state == 1:
-            self.handle_takeoff()
-        elif self.mission_state == 2:
-            self.handle_tracking()
-
-        # Publicar la velocidad calculada
-        self.vel_pub.publish(self.cmd_vel)
-
-    def handle_initialization(self):
-        # Enviamos velocidad 0 para "calentar" el link con MAVROS
-        self.cmd_vel = Twist()
-        
-        # Intentar poner modo OFFBOARD cada 5 segundos si no está puesto
-        if self.current_state.mode != "OFFBOARD" and (time.time() - self.last_req) > 5.0:
-            req = SetMode.Request()
-            req.custom_mode = 'OFFBOARD'
-            self.set_mode_client.call_async(req)
-            self.last_req = time.time()
-            self.get_logger().info("Intentando modo OFFBOARD...")
-
-        # Intentar ARMAR motores si ya es OFFBOARD y no está armado
-        elif self.current_state.mode == "OFFBOARD" and not self.current_state.armed and (time.time() - self.last_req) > 5.0:
-            req = CommandBool.Request()
-            req.value = True
-            self.arming_client.call_async(req)
-            self.last_req = time.time()
-            self.get_logger().info("Intentando ARMAR motores...")
-
-        # Si ya estamos en OFFBOARD y ARMADOS, pasamos a despegar
-        if self.current_state.mode == "OFFBOARD" and self.current_state.armed:
-            self.get_logger().info("Dron listo. Iniciando despegue...")
-            self.mission_state = 1
-
-    def handle_takeoff(self):
-        # Obtener altura actual
-        current_z = self.current_pose.pose.position.z
-
-        if current_z < self.target_altitude:
-            # Si estamos abajo de 2m, subimos
-            self.cmd_vel.linear.z = 0.5  # Subir a 0.5 m/s
-            self.cmd_vel.linear.x = 0.0
-            self.cmd_vel.angular.z = 0.0
-            # Pequeño log para ver progreso
-            # self.get_logger().info(f"Subiendo... Altura: {current_z:.2f}")
-        else:
-            # Ya llegamos a la altura
-            self.cmd_vel.linear.z = 0.0
-            self.get_logger().info("Altura alcanzada. Cambiando a modo TRACKING.")
-            self.mission_state = 2
-
-    def handle_tracking(self):
-        # Lógica de YOLO (similar a la anterior)
-        
-        # Seguridad: Si YOLO deja de ver cosas por 1 seg, detenerse
-        if time.time() - self.last_detection_time > 1.0:
-            self.cmd_vel = Twist() # Hover en el lugar
-            # self.get_logger().info("Buscando gate...")
+    def image_callback(self, color_msg, depth_msg):
+        if not hasattr(self, 'model'):
             return
+        
+        try:
+            cv_image = self.bridge.imgmsg_to_cv2(color_msg, "bgr8")
+            cv_depth = self.bridge.imgmsg_to_cv2(depth_msg, "passthrough")
 
-        # Recuperar datos guardados
-        msg = self.latest_yolo_msg
-        
-        error_x = self.target_x - msg.x
-        # Nota: Aquí ignoramos un poco la altura del gate y priorizamos mantener la altura de vuelo estable
-        # O puedes mezclar ambos (mantener 2m pero corregir un poco si el gate está muy alto/bajo)
-        
-        # Opción A: Seguir al gate en altura también
-        # error_y = (480/2) - msg.y 
-        # self.cmd_vel.linear.z = error_y * self.kp_alt 
+            results = self.model(cv_image, verbose=False, conf=0.5)
+            annotated_frame = results[0].plot()
 
-        # Opción B: Mantenerse fijo a 2 metros y solo moverse en X y Yaw (Más fácil para empezar)
-        altitude_error = self.target_altitude - self.current_pose.pose.position.z
-        self.cmd_vel.linear.z = altitude_error * 0.5 # Corrector simple de altura P
-        
-        area = msg.z
-        error_area = self.target_area - area
+            if len(results) > 0 and len(results[0].boxes) > 0:
+                # Se toma la mejor probabilidad
+                best_box = results[0].boxes[0]
+                coords = best_box.xywh[0].cpu().numpy()
+                x_c, y_c, w, h = coords
+                
+                dist_meters = self.get_distance_gate(cv_depth, x_c, y_c, w, h) #Profundidad RealSense
+                area_pixles = w * h #calculo del área normal
+                area_limit = 120000
 
-        # Control
-        self.cmd_vel.angular.z = error_x * self.kp_yaw
-        
-        if abs(error_x) < 100:
-            self.cmd_vel.linear.x = error_area * self.kp_fwd
-            self.cmd_vel.linear.x = min(self.cmd_vel.linear.x, 0.8)
-        else:
-            self.cmd_vel.linear.x = 0.0
+                if dist_meters < 0 and area_pixles > area_limit:
+                    self.get_logger().warning("Realsense no detecta el gate completo, esta muy cerca")
+                    dist_meters = 0.20
+
+                if dist_meters > 0:
+                    point_msg = Point()
+                    point_msg.x = float(x_c)
+                    point_msg.y = float(y_c)
+                    point_msg.z = float(dist_meters)
+                    
+                    self.coord_publisher.publish(point_msg)
+                    
+                    log_msg = (f"Gate detectado: Centro=({x_c:.0f}, {y_c:.0f})"
+                               f"Distancia={dist_meters:.2f}m"
+                               f"Area={area_pixles:.0f}px")
+                    self.get_logger().info(log_msg)
+
+                    text = f"{dist_meters:.2f}m (Area:{int(area_pixles)})"
+                    cv2.putText(annotated_frame, text, (int(x_c), int(y_c)), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 3)
+                else:
+                    self.get_logger().warning("Gate detectado sin profundidad")
+
+            #Publicación de image procesada
+            output_msg = self.bridge.cv2_to_imgmsg(annotated_frame, "bgr8")
+            output_msg.header = color_msg.header
+            self.img_publisher.publish(output_msg)
+
+        except CvBridgeError as e:
+            self.get_logger().error(f"CvBridge Error: {e}")
+        except Exception as e:
+            self.get_logger().error(f"Processing Error: {e}")
+
+    def get_distance_gate(self, depth_img, x_c, y_c, w, h):
+
+        """
+        Se calcula la distancia del gate buscando los pixeles más cercanos
+        de la bounding box
+        """
+        img_h, img_w = depth_img.shape
+
+        # definición de limites
+        x_min = int(max(0, x_c - w/2))
+        x_max = int(min(img_w, x_c + w/2))
+        y_min = int(max(0, y_c - h/2))
+        y_max = int(min(img_h, y_c + h/2))
+
+        # Limites del gate
+        if x_max <= x_min or y_max <= y_min:
+            return -1.0
+
+        # recorte de matriz de profundidad
+        roi = depth_img[y_min:y_max, x_min:x_max]
+
+        # Filtro de valores invalidos
+        valid_pixels = roi[roi > 0]
+
+        if len(valid_pixels) == 0:
+            return -1.0 # No encuntra una profundidad
+
+        #Se ordenada por distamcia para la mejor probabilidad
+        valid_pixels_sorted = np.sort(valid_pixels)
+
+        #Se toma en cuenta solo el 10% de los pixeles
+        num_samples = int(len(valid_pixels_sorted) * 0.10)
+        num_samples = max(5, num_samples) 
+        num_samples = min(num_samples, len(valid_pixels_sorted))
+        closest_pixels = valid_pixels_sorted[:num_samples]
+        avg_dist_mm = np.mean(closest_pixels) #promedio en mm
+        return avg_dist_mm / 1000.0 #COnversión a m
 
 def main(args=None):
     rclpy.init(args=args)
-    node = AutoNavigationNode()
-    
+    node = YoloNode()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
