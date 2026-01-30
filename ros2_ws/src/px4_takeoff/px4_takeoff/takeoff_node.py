@@ -10,48 +10,49 @@ from px4_msgs.msg import (
 )
 
 
-class PX4OffboardNoGPS(Node):
+class PX4Takeoff(Node):
 
     def __init__(self):
-        super().__init__('px4_offboard_no_gps')
+        super().__init__('px4_takeoff_dds')
 
-        # ===== Publishers hacia PX4 =====
+        # Publisher: modo offboard
         self.offboard_pub = self.create_publisher(
             OffboardControlMode,
             '/fmu/in/offboard_control_mode',
             10
         )
 
+        # Publisher: setpoints (posición / velocidad)
         self.traj_pub = self.create_publisher(
             TrajectorySetpoint,
             '/fmu/in/trajectory_setpoint',
             10
         )
 
+        # Publisher: comandos (ARM, OFFBOARD, etc.)
         self.cmd_pub = self.create_publisher(
             VehicleCommand,
             '/fmu/in/vehicle_command',
             10
         )
 
-        # ===== Timer (10 Hz) =====
+        # Timer a 10 Hz
         self.timer = self.create_timer(0.1, self.timer_cb)
 
-        # Contador simple para la secuencia
         self.counter = 0
 
 
     def timer_cb(self):
-        # Timestamp en microsegundos (PX4 lo exige así)
+        # Timestamp en microsegundos (PX4 lo requiere así)
         now = self.get_clock().now().nanoseconds // 1000
 
         # ------------------------------------------------
-        # 1) OFFBOARD CONTROL MODE
+        # 1 OFFBOARD CONTROL MODE
         # ------------------------------------------------
         offboard = OffboardControlMode()
         offboard.timestamp = now
 
-        # Control por VELOCIDAD
+        # SOLO control por velocidad (sin GPS)
         offboard.position = False
         offboard.velocity = True
         offboard.acceleration = False
@@ -61,34 +62,35 @@ class PX4OffboardNoGPS(Node):
         self.offboard_pub.publish(offboard)
 
         # ------------------------------------------------
-        # 2) SETPOINT DE VELOCIDAD
+        # 2 TRAJECTORY SETPOINT (VELOCIDAD)
         # ------------------------------------------------
         sp = TrajectorySetpoint()
         sp.timestamp = now
 
-        # No moverse en X ni Y
-        sp.vx = 0.0
-        sp.vy = 0.0
-
-        # Secuencia simple: subir -> bajar -> parar
+        # PX4 usa marco NED:
+        # z negativo = subir
+        # z positivo = bajar
         if self.counter < 50:
-            sp.vz = -0.5   # subir
+            # Subir
+            sp.velocity = [0.0, 0.0, -0.5]
         elif self.counter < 100:
-            sp.vz = 0.3    # bajar suave
+            # Bajar
+            sp.velocity = [0.0, 0.0, 0.3]
         else:
-            sp.vz = 0.0    # detenerse
+            # Detenerse
+            sp.velocity = [0.0, 0.0, 0.0]
 
         self.traj_pub.publish(sp)
 
         # ------------------------------------------------
-        # 3) CAMBIOS DE ESTADO (OFFBOARD / ARM)
+        # 3 COMANDOS DE ESTADO
         # ------------------------------------------------
         if self.counter == 10:
-            self.send_cmd(176, 1)  # MAV_CMD_DO_SET_MODE → OFFBOARD
+            self.send_cmd(176, 1)  # OFFBOARD
             self.get_logger().info('OFFBOARD solicitado')
 
         if self.counter == 20:
-            self.send_cmd(400, 1)  # MAV_CMD_COMPONENT_ARM_DISARM → ARM
+            self.send_cmd(400, 1)  # ARM
             self.get_logger().info('ARM solicitado')
 
         self.counter += 1
@@ -105,6 +107,7 @@ class PX4OffboardNoGPS(Node):
         msg.target_component = 1
         msg.source_system = 1
         msg.source_component = 1
+
         msg.from_external = True
 
         self.cmd_pub.publish(msg)
@@ -112,13 +115,8 @@ class PX4OffboardNoGPS(Node):
 
 def main():
     rclpy.init()
-    node = PX4OffboardNoGPS()
+    node = PX4Takeoff()
     rclpy.spin(node)
     node.destroy_node()
     rclpy.shutdown()
-
-
-if __name__ == '__main__':
-    main()
-
 
