@@ -5,31 +5,31 @@ from rclpy.node import Node
 
 from px4_msgs.msg import (
     OffboardControlMode,
-    TrajectorySetpoint,
+    VehicleAttitudeSetpoint,
     VehicleCommand
 )
 
 
-class PX4Takeoff(Node):
+class PX4AttitudeTakeoff(Node):
 
     def __init__(self):
-        super().__init__('px4_takeoff_dds')
+        super().__init__('px4_attitude_takeoff')
 
-        # Publisher: modo offboard
+        # -------------------------------
+        # Publishers
+        # -------------------------------
         self.offboard_pub = self.create_publisher(
             OffboardControlMode,
             '/fmu/in/offboard_control_mode',
             10
         )
 
-        # Publisher: setpoints (posición / velocidad)
-        self.traj_pub = self.create_publisher(
-            TrajectorySetpoint,
-            '/fmu/in/trajectory_setpoint',
+        self.attitude_pub = self.create_publisher(
+            VehicleAttitudeSetpoint,
+            '/fmu/in/vehicle_attitude_setpoint',
             10
         )
 
-        # Publisher: comandos (ARM, OFFBOARD, etc.)
         self.cmd_pub = self.create_publisher(
             VehicleCommand,
             '/fmu/in/vehicle_command',
@@ -43,44 +43,39 @@ class PX4Takeoff(Node):
 
 
     def timer_cb(self):
-        # Timestamp en microsegundos (PX4 lo requiere así)
         now = self.get_clock().now().nanoseconds // 1000
 
         # ------------------------------------------------
-        # 1 OFFBOARD CONTROL MODE
+        # 1 OFFBOARD CONTROL MODE → ATTITUDE
         # ------------------------------------------------
         offboard = OffboardControlMode()
         offboard.timestamp = now
 
-        # SOLO control por velocidad (sin GPS)
         offboard.position = False
-        offboard.velocity = True
+        offboard.velocity = False
         offboard.acceleration = False
-        offboard.attitude = False
+        offboard.attitude = True
         offboard.body_rate = False
 
         self.offboard_pub.publish(offboard)
 
         # ------------------------------------------------
-        # 2 TRAJECTORY SETPOINT (VELOCIDAD)
+        # 2 ATTITUDE SETPOINT
         # ------------------------------------------------
-        sp = TrajectorySetpoint()
-        sp.timestamp = now
+        att = VehicleAttitudeSetpoint()
+        att.timestamp = now
 
-        # PX4 usa marco NED:
-        # z negativo = subir
-        # z positivo = bajar
-        if self.counter < 50:
-            # Subir
-            sp.velocity = [0.0, 0.0, -0.5]
-        elif self.counter < 100:
-            # Bajar
-            sp.velocity = [0.0, 0.0, 0.3]
+        # Cuaternión identidad (sin inclinación)
+        att.q_d = [1.0, 0.0, 0.0, 0.0]
+
+        # Thrust (0.0 a 1.0)
+        # ~0.6 normalmente ya levanta
+        if self.counter < 60:
+            att.thrust_body = [0.0, 0.0, -0.65]  # subir
         else:
-            # Detenerse
-            sp.velocity = [0.0, 0.0, 0.0]
+            att.thrust_body = [0.0, 0.0, -0.45]  # sostener
 
-        self.traj_pub.publish(sp)
+        self.attitude_pub.publish(att)
 
         # ------------------------------------------------
         # 3 COMANDOS DE ESTADO
@@ -96,11 +91,11 @@ class PX4Takeoff(Node):
         self.counter += 1
 
 
-    def send_cmd(self, cmd, param1=0.0):
+    def send_cmd(self, command, param1=0.0):
         msg = VehicleCommand()
         msg.timestamp = self.get_clock().now().nanoseconds // 1000
 
-        msg.command = cmd
+        msg.command = command
         msg.param1 = float(param1)
 
         msg.target_system = 1
@@ -115,8 +110,9 @@ class PX4Takeoff(Node):
 
 def main():
     rclpy.init()
-    node = PX4Takeoff()
+    node = PX4AttitudeTakeoff()
     rclpy.spin(node)
     node.destroy_node()
     rclpy.shutdown()
+
 
