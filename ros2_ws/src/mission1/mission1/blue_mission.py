@@ -4,21 +4,22 @@ import rclpy
 from rclpy.node import Node
 from px4_msgs.msg import (
     OffboardControlMode,
-    TrajectorySetpoint,
+    VehicleAttitudeSetpoint,
     VehicleCommand
 )
 from geometry_msgs.msg import Point
 import time
+import math
 
-class blue_mission(Node):
+class MissionManager(Node):
 
     def __init__(self):
-        super().__init__('mission_manager')
+        super().__init__('mission_manager_altitude')
 
         self.state = 'INIT'
         self.counter = 0
-        self.gate_data = None
         self.start_time = None
+        self.gate = None
 
         # Publishers
         self.offboard_pub = self.create_publisher(
@@ -26,9 +27,9 @@ class blue_mission(Node):
             '/fmu/in/offboard_control_mode',
             10
         )
-        self.setpoint_pub = self.create_publisher(
-            TrajectorySetpoint,
-            '/fmu/in/trajectory_setpoint',
+        self.att_pub = self.create_publisher(
+            VehicleAttitudeSetpoint,
+            '/fmu/in/vehicle_attitude_setpoint',
             10
         )
         self.cmd_pub = self.create_publisher(
@@ -37,7 +38,7 @@ class blue_mission(Node):
             10
         )
 
-        # Subscriber (YOLO)
+        # Vision
         self.create_subscription(
             Point,
             '/m1/blue/coordinates',
@@ -48,7 +49,7 @@ class blue_mission(Node):
         self.timer = self.create_timer(0.1, self.timer_cb)
 
     def gate_cb(self, msg):
-        self.gate_data = msg
+        self.gate = msg
 
     def timer_cb(self):
         now = self.get_clock().now().nanoseconds // 1000
@@ -56,11 +57,17 @@ class blue_mission(Node):
         # OFFBOARD heartbeat
         off = OffboardControlMode()
         off.timestamp = now
-        off.velocity = True
+        off.attitude = True
         self.offboard_pub.publish(off)
 
-        sp = TrajectorySetpoint()
-        sp.timestamp = now
+        att = VehicleAttitudeSetpoint()
+        att.timestamp = now
+
+        # Default: plano, yaw fijo
+        att.q_d = [1.0, 0.0, 0.0, 0.0]
+
+        # Altitude control (PX4)
+        att.thrust_body = [0.0, 0.0, -0.6]
 
         # ---------------- STATES ----------------
 
@@ -73,36 +80,56 @@ class blue_mission(Node):
                 self.start_time = time.time()
 
         elif self.state == 'TAKEOFF':
-            sp.velocity = [0.0, 0.0, -0.4]   # subir
-            if time.time() - self.start_time > 3.5:
+            # Altitude controller sube solo
+            att.thrust_body = [0.0, 0.0, -0.7]
+            if time.time() - self.start_time > 3.0:
                 self.state = 'HOLD'
+                self.start_time = time.time()
 
         elif self.state == 'HOLD':
-            sp.velocity = [0.0, 0.0, 0.0]
-            self.start_time = time.time()
-            self.state = 'MOVE_RIGHT'
+            att.thrust_body = [0.0, 0.0, -0.6]
+            if time.time() - self.start_time > 2.0:
+                self.state = 'MOVE_RIGHT'
+                self.start_time = time.time()
 
         elif self.state == 'MOVE_RIGHT':
-            sp.velocity = [0.3, 0.0, 0.0]   # derecha
-            if time.time() - self.start_time > 1.7:
+            # Roll pequeño a la derecha
+            roll = 0.12  # rad
+            att.q_d = self.euler_to_quaternion(roll, 0.0, 0.0)
+            if time.time() - self.start_time > 1.5:
                 self.state = 'SEARCH'
 
         elif self.state == 'SEARCH':
-            sp.velocity = [0.0, 0.0, 0.0]
-            if self.gate_data and self.gate_data.z < 3.0:
-                self.state = 'FORWARD'
+            if self.gate and self.gate.z < 3.0:
+                self.state = 'MOVE_FORWARD'
                 self.start_time = time.time()
 
-        elif self.state == 'FORWARD':
-            sp.velocity = [0.0, 0.4, 0.0]
-            if time.time() - self.start_time > 11.0:
+        elif self.state == 'MOVE_FORWARD':
+            pitch = -0.10  # adelante
+            att.q_d = self.euler_to_quaternion(0.0, pitch, 0.0)
+            if time.time() - self.start_time > 6.0:
                 self.state = 'LAND'
 
         elif self.state == 'LAND':
-            self.send_cmd(21)  # NAV_LAND
+            self.send_cmd(21)  # LAND
 
-        self.setpoint_pub.publish(sp)
+        self.att_pub.publish(att)
         self.counter += 1
+
+    def euler_to_quaternion(self, roll, pitch, yaw):
+        cr = math.cos(roll / 2)
+        sr = math.sin(roll / 2)
+        cp = math.cos(pitch / 2)
+        sp = math.sin(pitch / 2)
+        cy = math.cos(yaw / 2)
+        sy = math.sin(yaw / 2)
+
+        return [
+            cr * cp * cy + sr * sp * sy,
+            sr * cp * cy - cr * sp * sy,
+            cr * sp * cy + sr * cp * sy,
+            cr * cp * sy - sr * sp * cy
+        ]
 
     def send_cmd(self, cmd, p1=0.0, p2=0.0):
         msg = VehicleCommand()
@@ -117,7 +144,7 @@ class blue_mission(Node):
 
 def main():
     rclpy.init()
-    node = blue_mission()
+    node = MissionManager()
     rclpy.spin(node)
     rclpy.shutdown()
 
