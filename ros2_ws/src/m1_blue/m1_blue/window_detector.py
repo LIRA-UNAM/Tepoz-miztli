@@ -109,6 +109,9 @@ class RealSenseWindowDetector(Node):
 
             #Area en pixeles
             area_px = w * h
+
+            #Calculo distancia por Area
+            distance_px = 1038.33 / (area_px ** 0.5)
             
             # Coordenadas de la caja en enteros para recortar
             x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
@@ -155,7 +158,7 @@ class RealSenseWindowDetector(Node):
             self.coord_pub.publish(coord_msg)
 
             self.get_logger().info(
-                f"Pos 3D -> X: {real_x:.2f}m | Y: {real_y:.2f}m | Dist: {real_z:.2f}m | Area: {area_px:.2f}m"
+                f"Pos 3D -> X: {real_x:.2f}m | Y: {real_y:.2f}m | Dist: {real_z:.2f}m | Area: {area_px:.2f}m | Distancia: {distance_px:.2f}m"
             )
 
             # ===============================
