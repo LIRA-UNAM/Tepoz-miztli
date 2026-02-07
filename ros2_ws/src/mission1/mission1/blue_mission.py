@@ -81,36 +81,42 @@ class MissionManager(Node):
 
         elif self.state == 'TAKEOFF':
             # Altitude controller sube solo
+            self.get_logger().info(f'Estado actual: {self.state}')
             att.thrust_body = [0.0, 0.0, -0.7]
             if time.time() - self.start_time > 3.0:
                 self.state = 'HOLD'
                 self.start_time = time.time()
 
         elif self.state == 'HOLD':
+            self.get_logger().info(f'Estado actual: {self.state}')
             att.thrust_body = [0.0, 0.0, -0.6]
             if time.time() - self.start_time > 2.0:
-                self.state = 'MOVE_RIGHT'
+                self.state = 'LAND'
                 self.start_time = time.time()
 
         elif self.state == 'MOVE_RIGHT':
             # Roll pequeño a la derecha
+            self.get_logger().info(f'Estado actual: {self.state}')
             roll = 0.12  # rad
             att.q_d = self.euler_to_quaternion(roll, 0.0, 0.0)
             if time.time() - self.start_time > 1.5:
                 self.state = 'SEARCH'
 
         elif self.state == 'SEARCH':
+            self.get_logger().info(f'Estado actual: {self.state}')
             if self.gate and self.gate.z < 3.0:
                 self.state = 'MOVE_FORWARD'
                 self.start_time = time.time()
 
         elif self.state == 'MOVE_FORWARD':
+            self.get_logger().info(f'Estado actual: {self.state}')
             pitch = -0.10  # adelante
             att.q_d = self.euler_to_quaternion(0.0, pitch, 0.0)
             if time.time() - self.start_time > 6.0:
                 self.state = 'LAND'
 
         elif self.state == 'LAND':
+            self.get_logger().info(f'Estado actual: {self.state}')
             self.send_cmd(21)  # LAND
 
         self.att_pub.publish(att)
