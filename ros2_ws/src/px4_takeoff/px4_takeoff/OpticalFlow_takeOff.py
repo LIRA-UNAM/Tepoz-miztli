@@ -28,7 +28,7 @@ class PX4FlowPrecision(Node):
         self.cmd_pub = self.create_publisher(VehicleCommand, '/fmu/in/vehicle_command', qos_profile)
 
         #Create Subscription
-        self.local_pos_pub = self.create_subscription(
+        self.local_pos_sub = self.create_subscription(
             VehicleLocalPosition,
             '/fmu/out/vehicle_local_position',
             self.local_pos_cb,
