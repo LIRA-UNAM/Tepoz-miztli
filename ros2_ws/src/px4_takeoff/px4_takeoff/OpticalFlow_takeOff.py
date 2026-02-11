@@ -1,11 +1,11 @@
-import rcply
-from rcply.node import Node
-from rcply.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
+import rclpy 
+from rclpy.node import Node
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 import math
 
 from px4_msgs.msg import(
     OffboardControlMode,
-    TrajectorySetPoint,
+    TrajectorySetpoint,
     VehicleCommand,
     VehicleLocalPosition,
     VehicleStatus
@@ -14,37 +14,38 @@ from px4_msgs.msg import(
 class PX4FlowPrecision(Node):
     def __init__(self):
         super().__init__('px4_flow_precicison')
-        aqos_profile = QoSProfile(
+
+        qos_profile = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
             history=HistoryPolicy.KEEP_LAST,
             depth=1
         )
 
-    #Create Publishers
-    self.offboard_pub = self.create_publisher(OffboardControlMode, '/fmu/in/offboard_control_mode', qos_profile)
-    self.trajectory_pub = self.create_publisher(TrajectorySetpoint, '/fmu/in/trajectory_setpoint', qos_profile)
-    self.cmd_pub = self.create_publisher(VehicleCommand, '/fmu/in/vehicle_command', qos_profile)
+        #Create Publishers
+        self.offboard_pub = self.create_publisher(OffboardControlMode, '/fmu/in/offboard_control_mode', qos_profile)
+        self.trajectory_pub = self.create_publisher(TrajectorySetpoint, '/fmu/in/trajectory_setpoint', qos_profile)
+        self.cmd_pub = self.create_publisher(VehicleCommand, '/fmu/in/vehicle_command', qos_profile)
 
-    #Create Subscription
-    self.local_pos_pub = self.create_subscription(
-        VehicleLocalPosition,
-        '/fmu/out/vehicle_local_position',
-        self.local_pos_cb,
-        qos_profile
-    )
+        #Create Subscription
+        self.local_pos_pub = self.create_subscription(
+            VehicleLocalPosition,
+            '/fmu/out/vehicle_local_position',
+            self.local_pos_cb,
+            qos_profile
+        )
 
-    self.timer = self.create_timer(0.1, self.timer_cb) #10 Hz
-    self.counter = 0
+        self.timer = self.create_timer(0.1, self.timer_cb) #10 Hz
+        self.counter = 0
 
-    #Initialize variables
-    self.current_z = 0.0
-    self.target_z = -2.0 #System NED negative | -2.0 m = 2.0 
-    self.hold_duration = 40 # 4s to 10Hz
+        #Initialize variables
+        self.current_z = 0.0
+        self.target_z = -2.0 #System NED negative | -2.0 m = 2.0 
+        self.hold_duration = 40 # 4s to 10Hz
 
-    #Phases
-    self.state = "INIT"
-    self.hold_counter = 0
+        #Phases
+        self.state = "INIT"
+        self.hold_counter = 0
 
 def local_pos_cb(self,msg):
     """
@@ -53,7 +54,7 @@ def local_pos_cb(self,msg):
     self.current_z = msg.z
 
 def timer_cb(self):
-    now = self.get_clock().now().nanoseconds() // 1000
+    now = self.get_clock().now().nanoseconds // 1000
 
     offboard = OffboardControlMode()
     offboard.timestamp = now
@@ -62,7 +63,7 @@ def timer_cb(self):
     offboard.acceleration = False
     self.offboard_pub.publish(offboard)
 
-    setpoint = TrajectorySetPoint()
+    setpoint = TrajectorySetpoint()
     setpoint.timestamp = now
     setpoint.yaw = 0.0
 
