@@ -6,7 +6,8 @@ from px4_msgs.msg import(
     OffboardControlMode,
     TrajectorySetpoint,
     VehicleCommand,
-    VehicleLocalPosition
+    VehicleLocalPosition,
+    VehicleStatus
 )
 
 class PX4FlowPrecision(Node):
@@ -16,9 +17,9 @@ class PX4FlowPrecision(Node):
 
         qos_profile = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
-            durability=DurabilityPolicy.VOLATILE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
             history=HistoryPolicy.KEEP_LAST,
-            depth=10
+            depth=1
         )
 
         # Publishers
