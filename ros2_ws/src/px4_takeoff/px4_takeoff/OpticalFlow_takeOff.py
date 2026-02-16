@@ -8,7 +8,8 @@ from px4_msgs.msg import(
     TrajectorySetpoint,
     VehicleCommand,
     VehicleLocalPosition,
-    VehicleStatus
+    VehicleStatus,
+    VehicleAttitude
 )
 
 class PX4FlowPrecision(Node):
@@ -27,7 +28,7 @@ class PX4FlowPrecision(Node):
         self.trajectory_pub = self.create_publisher(TrajectorySetpoint, '/fmu/in/trajectory_setpoint', qos_profile)
         self.cmd_pub = self.create_publisher(VehicleCommand, '/fmu/in/vehicle_command', qos_profile)
 
-        #Create Subscription
+        #Create Subscriptions
         self.local_pos_sub = self.create_subscription(
             VehicleLocalPosition,
             '/fmu/out/vehicle_local_position',
@@ -35,11 +36,20 @@ class PX4FlowPrecision(Node):
             qos_profile
         )
 
+        self.attitude_sub = self.create_subscription(
+             VehicleAttitude,
+             '/fmu/out/vehicle_attitude', 
+             self.attitude_cb,
+             qos_profile
+        )
+
         self.timer = self.create_timer(0.1, self.timer_cb) #10 Hz
         self.counter = 0
 
         #Initialize variables
         self.current_z = 0.0
+        self.current_yaw = 0.0
+        self.locked_yaw = None
         self.target_z = -2.0 #System NED negative | -2.0 m = 2.0 
         self.hold_duration = 40 # 4s to 10Hz
 
@@ -53,6 +63,18 @@ def local_pos_cb(self,msg):
     """
     self.current_z = msg.z
 
+def attitude_cb(self, msg):
+     """
+     #Quaternion (q) in angular Yaw
+     q[0]=w, q[1]=x, q[2]=y, q[3]=z
+     """
+     q = msg.q
+     siny_cosp = 2 * (q[0] * q[3] + q[1] * q[2])
+     cosy_cosp = 1 -2 * (q[2] * q[2] + q[3] * q[3])
+     yaw = math.atan2(siny_cosp, cosy_cosp)
+
+     self.current_yaw = yaw
+
 def timer_cb(self):
     now = self.get_clock().now().nanoseconds // 1000
 
@@ -65,8 +87,12 @@ def timer_cb(self):
 
     setpoint = TrajectorySetpoint()
     setpoint.timestamp = now
-    setpoint.yaw = 0.0
+    # setpoint.yaw = 0.0 (North magnetic)
 
+    if self.state == "INIT" or self.state == "ARMING":
+         self.locked_yaw = self.current_yaw
+    
+    setpoint.yaw = self.locked_yaw if self.locked_yaw is not None else 0.0
     #Default Values
     setpoint.velocity = [0.0,0.0,float('nan')]
     setpoint.position = [float('nan'), float('nan'), float('nan')]
@@ -87,7 +113,7 @@ def timer_cb(self):
         setpoint.position = [0.0, 0.0, self.target_z]
         setpoint.velocity = [0.0, 0.0, -0.8] #Velocity motors
 
-        if abs(self.current_z - self.target_z) < 0.15:
+        if abs(self.current_z - self.target_z) < 0.20: #0.15
             self.state = "HOLD"
             self.get_logger().info("HOLD POSITION")
 
