@@ -21,7 +21,7 @@ setup(
     entry_points={
         'console_scripts': [
             # 'takeoff = px4_takeoff.takeoff_node:main',
-            'takeoff = px4_takeoff.OpticalFlow_takeOff:main', #Quique
+            'OpticalFLow_takeoff = px4_takeoff.OpticalFlow_takeOff:main', #Quique
         ],
     },
 )

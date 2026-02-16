@@ -2,40 +2,47 @@
 
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
+
 from px4_msgs.msg import (
     OffboardControlMode,
-    VehicleAttitudeSetpoint,
-    VehicleCommand
+    TrajectorySetpoint,
+    VehicleCommand,
+    VehicleLocalPosition,
+    VehicleStatus
 )
+
 from geometry_msgs.msg import Point
 import time
-import math
 
 class MissionManager(Node):
 
     def __init__(self):
         super().__init__('mission_manager_altitude')
 
-        self.state = 'INIT'
-        self.counter = 0
-        self.start_time = None
-        self.gate = None
+        qos_profile = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1
+        )
+
 
         # Publishers
         self.offboard_pub = self.create_publisher(
             OffboardControlMode,
             '/fmu/in/offboard_control_mode',
-            10
+            qos_profile
         )
-        self.att_pub = self.create_publisher(
-            VehicleAttitudeSetpoint,
-            '/fmu/in/vehicle_attitude_setpoint',
-            10
+        self.trajectory_pub = self.create_publisher(
+            TrajectorySetpoint,
+            '/fmu/in/trajectory_setpoint',
+            qos_profile
         )
         self.cmd_pub = self.create_publisher(
             VehicleCommand,
             '/fmu/in/vehicle_command',
-            10
+            qos_profile
         )
 
         # Vision
@@ -43,10 +50,30 @@ class MissionManager(Node):
             Point,
             '/m1/blue/coordinates',
             self.gate_cb,
-            10
+            1
         )
 
+        # Subscriber
+        self.local_pos_sub = self.create_subscription(
+            VehicleLocalPosition,
+            '/fmu/out/vehicle_local_position',
+            self.local_pos_cb,
+            qos_profile)
+
         self.timer = self.create_timer(0.1, self.timer_cb)
+        
+        self.state = 'INIT'
+        self.counter = 0
+        self.start_time = None
+        self.gate = None
+        self.current_z = 0.0
+        self.target_z = -1.75
+        self.hold_duration = 100
+        self.hold_counter = 0
+
+
+    def local_pos_cb(self, msg):
+        self.current_z = msg.z
 
     def gate_cb(self, msg):
         self.gate = msg
@@ -55,94 +82,108 @@ class MissionManager(Node):
         now = self.get_clock().now().nanoseconds // 1000
 
         # OFFBOARD heartbeat
-        off = OffboardControlMode()
-        off.timestamp = now
-        off.attitude = True
-        self.offboard_pub.publish(off)
+        offboard = OffboardControlMode()
+        offboard.timestamp = now
+        offboard.position = True
+        offboard.velocity = True
+        offboard.acceleration = False
+        self.offboard_pub.publish(offboard)
 
-        att = VehicleAttitudeSetpoint()
-        att.timestamp = now
-
-        # Default: plano, yaw fijo
-        att.q_d = [1.0, 0.0, 0.0, 0.0]
-
-        # Altitude control (PX4)
-        att.thrust_body = [0.0, 0.0, -0.6]
+        setpoint = TrajectorySetpoint()
+        setpoint.timestamp = now
+        setpoint.yaw = 0.0
+        setpoint.velocity = [0.0, 0.0, float('nan')]
+        setpoint.position = [float('nan'), float('nan'), float('nan')]
 
         # ---------------- STATES ----------------
 
         if self.state == 'INIT':
-            if self.counter == 20:
+            if self.counter > 20:
                 self.send_cmd(176, 1.0, 6.0)  # OFFBOARD
-            if self.counter == 40:
-                self.send_cmd(400, 1.0)       # ARM
-                self.state = 'TAKEOFF'
-                self.start_time = time.time()
+                self.state = "ARMING"
+
+        elif self.state == "ARMING":
+                if self.counter > 30:
+                    self.send_cmd(400, param1=1.0) # ARM
+                    self.get_logger().info("ARMED")
+                    self.state = 'TAKEOFF'
+                    self.start_time = time.time()
 
         elif self.state == 'TAKEOFF':
-            # Altitude controller sube solo
-            self.get_logger().info(f'Estado actual: {self.state}')
-            att.thrust_body = [0.0, 0.0, -0.7]
-            if time.time() - self.start_time > 3.0:
+            setpoint.position = [0.0, 0.0, self.target_z]
+            setpoint.velocity = [0.0, 0.0, -0.8]
+
+            if abs(self.current_z - self.target_z) < 0.15:
                 self.state = 'HOLD'
-                self.start_time = time.time()
+                self.get_logger().info('TAKEOFF COMPLETE')
 
         elif self.state == 'HOLD':
-            self.get_logger().info(f'Estado actual: {self.state}')
-            att.thrust_body = [0.0, 0.0, -0.6]
-            if time.time() - self.start_time > 2.0:
-                self.state = 'LAND'
-                self.start_time = time.time()
+            setpoint.position = [0.0, 0.0, self.target_z]
+            setpoint.velocity = [0.0, 0.0, 0.0]
+            self.hold_counter += 1
 
-        elif self.state == 'MOVE_RIGHT':
-            # Roll pequeño a la derecha
-            self.get_logger().info(f'Estado actual: {self.state}')
-            roll = 0.12  # rad
-            att.q_d = self.euler_to_quaternion(roll, 0.0, 0.0)
-            if time.time() - self.start_time > 1.5:
-                self.state = 'SEARCH'
+            if self.hold_counter >= self.hold_duration:
+                self.state = "SEARCH"
+                self.get_logger().info("SEARCHING")
 
         elif self.state == 'SEARCH':
-            self.get_logger().info(f'Estado actual: {self.state}')
+            setpoint.position = [float('nan'), float('nan'), self.target_z]
+            setpoint.velocity = [0.0, 0.3, 0.0]
             if self.gate and self.gate.z < 3.0:
-                self.state = 'MOVE_FORWARD'
+                self.state = 'CENTER'
                 self.start_time = time.time()
 
-        elif self.state == 'MOVE_FORWARD':
-            self.get_logger().info(f'Estado actual: {self.state}')
-            pitch = -0.10  # adelante
-            att.q_d = self.euler_to_quaternion(0.0, pitch, 0.0)
-            if time.time() - self.start_time > 6.0:
+        elif self.state == 'CENTER':
+
+            if not self.gate:
+                self.state = 'SEARCH'
+                return
+            
+            error_x = self.gate.x
+            error_y = self.gate.y
+
+            Kp = 0.002
+
+            vy = -Kp * error_x
+            vz = -Kp * error_y
+
+            vy = max(min(vy, 0.5), -0.5)
+            vz = max(min(vz, 0.4), -0.4)
+
+            setpoint.position = [float('nan'), float('nan'), float('nan')]
+            setpoint.velocity = [0.0, vy, vz]
+
+            if abs(error_x) < 20 and abs(error_y) < 20:
+                self.state = 'CROSS_GATE'
+                self.start_time = time.time()
+                self.get_logger().info('Drone center')
+
+        elif self.state == 'CROSS_GATE':
+            setpoint.position = [float('nan'), float('nan'), self.target_z]
+            setpoint.velocity = [0.8, 0.0, 0.0]
+
+            if time.time() - self.start_time > 5.0:
                 self.state = 'LAND'
 
         elif self.state == 'LAND':
-            self.get_logger().info(f'Estado actual: {self.state}')
-            self.send_cmd(21)  # LAND
+            setpoint.position = [float('nan'), float('nan'), float('nan')]
+            setpoint.velocity = [0.0, 0.0, 0.4]
 
-        self.att_pub.publish(att)
+            if self.current_z > -0.15:
+                self.state = "LANDED"
+                self.send_cmd(400, param1=0.0)
+                self.get_logger().info("LANDING COMPLETED")
+
+
+        self.trajectory_pub.publish(setpoint)
         self.counter += 1
 
-    def euler_to_quaternion(self, roll, pitch, yaw):
-        cr = math.cos(roll / 2)
-        sr = math.sin(roll / 2)
-        cp = math.cos(pitch / 2)
-        sp = math.sin(pitch / 2)
-        cy = math.cos(yaw / 2)
-        sy = math.sin(yaw / 2)
-
-        return [
-            cr * cp * cy + sr * sp * sy,
-            sr * cp * cy - cr * sp * sy,
-            cr * sp * cy + sr * cp * sy,
-            cr * cp * sy - sr * sp * cy
-        ]
-
-    def send_cmd(self, cmd, p1=0.0, p2=0.0):
+    def send_cmd(self, command, param1=0.0, param2=0.0):
         msg = VehicleCommand()
         msg.timestamp = self.get_clock().now().nanoseconds // 1000
-        msg.command = cmd
-        msg.param1 = p1
-        msg.param2 = p2
+        msg.command = command
+        msg.param1 = float(param1)
+        msg.param2 = float(param2)
         msg.target_system = 1
         msg.target_component = 1
         msg.from_external = True
@@ -152,5 +193,9 @@ def main():
     rclpy.init()
     node = MissionManager()
     rclpy.spin(node)
+    node.destroy_node()
     rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
 
