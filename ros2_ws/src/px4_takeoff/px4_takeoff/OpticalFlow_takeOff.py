@@ -1,4 +1,4 @@
-import rclpy 
+amuimport rclpy 
 import math
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
@@ -96,23 +96,19 @@ class PX4FlowPrecision(Node):
         # setpoint.yaw = 0.0 (North magnetic)
         
         if self.locked_yaw is None:
-            self.locked_yaw = self.current_yaw
+            self.locked_yaw = self.locked_yaw
         setpoint.yaw = self.locked_yaw
-
-        #Default Values | State Machine
+        
+        #Default Values
+        setpoint.velocity = [0.0,0.0,float('nan')]
+        setpoint.position = [float('nan'), float('nan'), float('nan')]
 
         if self.state == "INIT":
-            setpoint.position = [0.0,0.0,0.0]
-            setpoint.velocity = [0.0,0.0,0.0]
-
             if self.counter > 20:
                 self.send_cmd(176, param1=1.0, param2=6.0)
                 self.state = "ARMING"
 
         elif self.state == "ARMING":
-            setpoint.position = [0.0,0.0,0.0]
-            setpoint.velocity = [0.0,0.0,0.0]
-
             if self.counter > 30:
                 self.send_cmd(400, param1=1.0)
                 self.get_logger().info("ARMED")
@@ -121,34 +117,26 @@ class PX4FlowPrecision(Node):
         elif self.state == "TAKEOFF":
             setpoint.position = [0.0, 0.0, self.target_z]
             setpoint.velocity = [0.0, 0.0, -0.8]
-            distance_error = abs(self.current_z - self.target_z)
 
-            if distance_error < 0.20:
+            if abs(self.current_z - self.target_z) < 0.20: #0.15
                 self.state = "HOLD"
-                self.hold_counter = 0
-                self.get_logger().info("Timer Inizialized")
+                self.get_logger().info("HOLD POSITION")
 
         elif self.state == "HOLD":
             setpoint.position = [0.0, 0.0, self.target_z]
             setpoint.velocity = [0.0, 0.0, 0.0]
             self.hold_counter += 1
-            time_current = self.hold_counter * 0.1
-            
-            if time_current >= self.hold_duration:
+            if self.hold_counter >= self.hold_duration:
                 self.state = "LAND"
                 self.get_logger().info("LANDING")
 
         elif self.state == "LAND":
             setpoint.position = [0.0, 0.0, 0.0]
-            setpoint.velocity = [0.0, 0.0, 0.3]
-            if self.current_z > -0.20: #sensor Optical distance
+            setpoint.velocity = [0.0, 0.0, 0.4]
+            if self.current_z > -0.15:
                 self.state = "LANDED"
                 self.send_cmd(400, param1=0.0)
                 self.get_logger().info("LANDING COMPLETED")
-
-        elif self.state == "LANDED":
-            setpoint.position = [0.0, 0.0, 0.0]
-            setpoint.velocity = [0.0, 0.0, 0.0]
 
         self.trajectory_pub.publish(setpoint)
         self.counter += 1
@@ -174,5 +162,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
