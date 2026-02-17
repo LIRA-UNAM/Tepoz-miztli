@@ -61,8 +61,8 @@ class PX4FlowPrecision(Node):
         self.current_z = 0.0
         self.current_yaw = 0.0
         self.locked_yaw = None
-        self.target_z = -2.0 #System NED negative | -2.0 m = 2.0 
-        self.hold_duration = 40 # 4s to 10Hz
+        self.target_z = -1.0 #System NED negative | -2.0 m = 2.0 
+        self.hold_duration = 20 # 4s to 10Hz
 
         #Phases
         self.state = "INIT"
