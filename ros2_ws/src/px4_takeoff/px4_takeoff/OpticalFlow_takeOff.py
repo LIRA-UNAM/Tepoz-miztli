@@ -9,8 +9,8 @@ from px4_msgs.msg import(
     TrajectorySetpoint,
     VehicleCommand,
     VehicleLocalPosition,
-    VehicleStatus,
-    VehicleAttitude
+    VehicleAttitude,
+    VehicleStatus
 )
 
 class PX4FlowPrecision(Node):
@@ -61,12 +61,12 @@ class PX4FlowPrecision(Node):
         self.current_z = 0.0
         self.current_yaw = 0.0
         self.locked_yaw = None
-        self.target_z = -1.0 #System NED negative | -2.0 m = 2.0 
-        self.hold_duration = 20 # 4s to 10Hz
+        self.target_z = -2.0 #System NED negative | -2.0 m = 2.0 
+        self.hold_duration = 5.0 # 5s to 10Hz
 
         #Phases
-        self.state = "INIT"
         self.hold_counter = 0
+        self.state = "INIT"
 
     def local_pos_cb(self, msg):
         self.current_z = msg.z
@@ -79,9 +79,7 @@ class PX4FlowPrecision(Node):
         q = msg.q
         siny_cosp = 2 * (q[0] * q[3] + q[1] * q[2])
         cosy_cosp = 1 -2 * (q[2] * q[2] + q[3] * q[3])
-        yaw = math.atan2(siny_cosp, cosy_cosp)
-
-        self.current_yaw = yaw
+        self.current_yaw = math.atan2(siny_cosp, cosy_cosp)
 
     def timer_cb(self):
         now = self.get_clock().now().nanoseconds // 1000
@@ -96,21 +94,25 @@ class PX4FlowPrecision(Node):
         setpoint = TrajectorySetpoint()
         setpoint.timestamp = now
         # setpoint.yaw = 0.0 (North magnetic)
-
-        if self.state == "INIT" or self.state == "ARMING":
-            self.locked_yaw = self.current_yaw
         
-        setpoint.yaw = self.locked_yaw if self.locked_yaw is not None else 0.0
-        #Default Values
-        setpoint.velocity = [0.0,0.0,float('nan')]
-        setpoint.position = [float('nan'), float('nan'), float('nan')]
+        if self.locked_yaw is None:
+            self.locked_yaw = self.locked_yaw
+        setpoint.yaw = self.locked_yaw
+
+        #Default Values | State Machine
 
         if self.state == "INIT":
+            setpoint.position = [0.0,0.0,0.0]
+            setpoint.velocity = [0.0,0.0,0.0]
+
             if self.counter > 20:
                 self.send_cmd(176, param1=1.0, param2=6.0)
                 self.state = "ARMING"
 
         elif self.state == "ARMING":
+            setpoint.position = [0.0,0.0,0.0]
+            setpoint.velocity = [0.0,0.0,0.0]
+
             if self.counter > 30:
                 self.send_cmd(400, param1=1.0)
                 self.get_logger().info("ARMED")
@@ -119,26 +121,34 @@ class PX4FlowPrecision(Node):
         elif self.state == "TAKEOFF":
             setpoint.position = [0.0, 0.0, self.target_z]
             setpoint.velocity = [0.0, 0.0, -0.8]
+            distance_error = abs(self.current_z - self.target_z)
 
-            if abs(self.current_z - self.target_z) < 0.20: #0.15
+            if distance_error < 0.15:
                 self.state = "HOLD"
-                self.get_logger().info("HOLD POSITION")
+                self.hold_counter = 0
+                self.get_logger().info("Timer Inizialized")
 
         elif self.state == "HOLD":
             setpoint.position = [0.0, 0.0, self.target_z]
             setpoint.velocity = [0.0, 0.0, 0.0]
             self.hold_counter += 1
-            if self.hold_counter >= self.hold_duration:
+            time_current = self.hold_counter * 0.1
+            
+            if time_current >= self.hold_duration:
                 self.state = "LAND"
                 self.get_logger().info("LANDING")
 
         elif self.state == "LAND":
             setpoint.position = [0.0, 0.0, 0.0]
-            setpoint.velocity = [0.0, 0.0, 0.4]
-            if self.current_z > -0.15:
+            setpoint.velocity = [0.0, 0.0, 0.3]
+            if self.current_z > -0.20: #sensor Optical distance
                 self.state = "LANDED"
                 self.send_cmd(400, param1=0.0)
                 self.get_logger().info("LANDING COMPLETED")
+
+        elif self.state == "LANDED":
+            setpoint.position = [0.0, 0.0, 0.0]
+            setpoint.velocity = [0.0, 0.0, 0.0]
 
         self.trajectory_pub.publish(setpoint)
         self.counter += 1
