@@ -96,7 +96,7 @@ class PX4FlowPrecision(Node):
         # setpoint.yaw = 0.0 (North magnetic)
         
         if self.locked_yaw is None:
-            self.locked_yaw = self.locked_yaw
+            self.locked_yaw = self.current_yaw
         setpoint.yaw = self.locked_yaw
 
         #Default Values | State Machine
@@ -123,7 +123,7 @@ class PX4FlowPrecision(Node):
             setpoint.velocity = [0.0, 0.0, -0.8]
             distance_error = abs(self.current_z - self.target_z)
 
-            if distance_error < 0.15:
+            if distance_error < 0.20:
                 self.state = "HOLD"
                 self.hold_counter = 0
                 self.get_logger().info("Timer Inizialized")
