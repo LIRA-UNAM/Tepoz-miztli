@@ -82,39 +82,38 @@ class RealSenseWindowDetector(Node):
             # YOLO parameter
             results = self.model(frame, conf=0.5, verbose=False)
 
-            if not results or len(results[0].boxes) == 0:
-                return
+            if results and len(results[0].boxes) > 0:
 
-            # Use best detection
-            box = results[0].boxes[0]
-            x_center, y_center, w, h = box.xywh[0].cpu().numpy()
+                # Use best detection
+                box = results[0].boxes[0]
+                x_center, y_center, w, h = box.xywh[0].cpu().numpy()
 
-            #Area in pixels
-            area_px = w * h
+                #Area in pixels
+                area_px = w * h
 
-            #Formula distance using Area
-            distance_px = 1038.33 / (area_px ** 0.5)
-            
-            # Coordenadas de la caja en enteros para recortar
-            x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
+                #Formula distance using Area
+                distance_px = 1038.33 / (area_px ** 0.5)
+                
+                # Coordenadas de la caja en enteros para recortar
+                x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
 
-            # Image limits
-            h_img, w_img = depth_frame.shape
-            x1 = max(0, x1); y1 = max(0, y1)
-            x2 = min(w_img, x2); y2 = min(h_img, y2)
+                # Image limits
+                h_img, w_img = depth_frame.shape
+                x1 = max(0, x1); y1 = max(0, y1)
+                x2 = min(w_img, x2); y2 = min(h_img, y2)
 
-            self.get_logger().info(
-                f"Area: {area_px:.2f}m | Distancia: {distance_px:.2f}m"
-            )
+                self.get_logger().info(
+                    f"Area: {area_px:.2f}m | Distancia: {distance_px:.2f}m"
+                )
 
-            # Write distance
-            annotated = results[0].plot()
-            cv2.putText(annotated, f"{distance_px:.2f}m", (int(x1), int(y1)-10), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
-            
-            img_msg = self.bridge.cv2_to_imgmsg(annotated, encoding='bgr8')
-            img_msg.header = rgb_msg.header
-            self.image_pub.publish(img_msg)
+                # Write distance
+                annotated = results[0].plot()
+                cv2.putText(annotated, f"{distance_px:.2f}m", (int(x1), int(y1)-10), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+                
+                img_msg = self.bridge.cv2_to_imgmsg(annotated, encoding='bgr8')
+                img_msg.header = rgb_msg.header
+                self.image_pub.publish(img_msg)
 
         except Exception as e:
             self.get_logger().error(f"Error en procesamiento: {e}")
