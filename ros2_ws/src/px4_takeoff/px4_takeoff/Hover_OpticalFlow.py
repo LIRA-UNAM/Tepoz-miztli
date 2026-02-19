@@ -1,188 +1,164 @@
-#!/usr/bin/env python3
-
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
+from rclpy.clock import Clock
+import time
 import math
 
-from px4_msgs.msg import (
-    OffboardControlMode,
-    TrajectorySetpoint,
-    VehicleCommand,
-    VehicleLocalPosition,
-    VehicleAttitude,
-    VehicleStatus
-)
+from px4_msgs.msg import OffboardControlMode
+from px4_msgs.msg import TrajectorySetpoint
+from px4_msgs.msg import VehicleCommand
+from px4_msgs.msg import VehicleLocalPosition
+from px4_msgs.msg import VehicleStatus
 
-class PX4PreciseHover(Node):
+class PrecisionFlightNode(Node):
     def __init__(self):
-        super().__init__('px4_precise_hover')
+        super().__init__('precision_flight_node')
+
+        # Publishers
+        self.offboard_control_mode_publisher = self.create_publisher(OffboardControlMode, '/fmu/in/offboard_control_mode', 10)
+        self.trajectory_setpoint_publisher = self.create_publisher(TrajectorySetpoint, '/fmu/in/trajectory_setpoint', 10)
+        self.vehicle_command_publisher = self.create_publisher(VehicleCommand, '/fmu/in/vehicle_command', 10)
+
+        # Subscribers
+        self.local_position_sub = self.create_subscription(VehicleLocalPosition, '/fmu/out/vehicle_local_position', self.position_callback, 10)
+        self.vehicle_status_sub = self.create_subscription(VehicleStatus, '/fmu/out/vehicle_status', self.status_callback, 10)
+
+        # Variables de estado
+        self.nav_state = VehicleStatus.NAVIGATION_STATE_MAX
+        self.arming_state = VehicleStatus.ARMING_STATE_DISARMED
         
-        # QoS Profile (Fiabilidad para comandos)
-        qos_profile = QoSProfile(
-            reliability=ReliabilityPolicy.BEST_EFFORT,
-            durability=DurabilityPolicy.TRANSIENT_LOCAL,
-            history=HistoryPolicy.KEEP_LAST,
-            depth=1
-        )
-
-        # Publicadores y Suscriptores
-        self.offboard_pub = self.create_publisher(OffboardControlMode, '/fmu/in/offboard_control_mode', qos_profile)
-        self.trajectory_pub = self.create_publisher(TrajectorySetpoint, '/fmu/in/trajectory_setpoint', qos_profile)
-        self.cmd_pub = self.create_publisher(VehicleCommand, '/fmu/in/vehicle_command', qos_profile)
-
-        self.local_pos_sub = self.create_subscription(
-            VehicleLocalPosition,
-            '/fmu/out/vehicle_local_position',
-            self.local_pos_cb,
-            qos_profile
-        )
-        
-        # Para bloquear el giro (Yaw) y que no de vueltas
-        self.attitude_sub = self.create_subscription(
-            VehicleAttitude,
-            '/fmu/out/vehicle_attitude',
-            self.attitude_cb,
-            qos_profile
-        )
-
-        # Timer principal a 10 Hz (0.1 segundos por ciclo)
-        self.timer = self.create_timer(0.1, self.timer_cb) 
-        self.counter = 0
-
-        # --- VARIABLES DE CONTROL ---
+        # Posición actual
+        self.current_x = 0.0
+        self.current_y = 0.0
         self.current_z = 0.0
         self.current_yaw = 0.0
-        self.locked_yaw = None 
-        
-        self.target_height = -2.0  # 2 metros (Negativo en NED)
-        self.hold_time_seconds = 10.0 # Tiempo que quieres esperar ARRIBA
-        
-        # El contador para la espera (Se inicia en 0)
-        self.hover_timer_ticks = 0 
-        
-        self.state = "INIT"
+        self.position_initialized = False
 
-    def local_pos_cb(self, msg):
+        # Referencias de despegue (para evitar drift y rotación)
+        self.start_x = 0.0
+        self.start_y = 0.0
+        self.start_yaw = 0.0
+        
+        # Máquina de estados del vuelo
+        self.flight_state = "INIT"
+        self.target_altitude = -2.5 # NED (Negativo es hacia arriba)
+        self.hover_duration = 8.0 # Segundos
+        self.hover_start_time = 0.0
+
+        # Timer a 50Hz (PX4 requiere al menos 2Hz en Offboard, 50Hz es óptimo para control)
+        self.timer = self.create_timer(0.02, self.timer_callback)
+        self.get_logger().info("Nodo iniciado. Esperando datos de posición local...")
+
+    def position_callback(self, msg):
+        self.current_x = msg.x
+        self.current_y = msg.y
         self.current_z = msg.z
+        self.current_yaw = msg.heading
+        
+        # Guardar la posición inicial una sola vez cuando el sensor (Optical Flow) empiece a publicar
+        if not self.position_initialized and msg.xy_valid and msg.z_valid:
+            self.start_x = msg.x
+            self.start_y = msg.y
+            self.start_yaw = msg.heading
+            self.position_initialized = True
+            self.get_logger().info(f"Posición inicial bloqueada: X={self.start_x:.2f}, Y={self.start_y:.2f}, Yaw={self.start_yaw:.2f}")
 
-    def attitude_cb(self, msg):
-        # Convertir cuaternión a Yaw
-        q = msg.q
-        siny_cosp = 2 * (q[0] * q[3] + q[1] * q[2])
-        cosy_cosp = 1 - 2 * (q[2] * q[2] + q[3] * q[3])
-        self.current_yaw = math.atan2(siny_cosp, cosy_cosp)
+    def status_callback(self, msg):
+        self.nav_state = msg.nav_state
+        self.arming_state = msg.arming_state
 
-    def timer_cb(self):
-        now = self.get_clock().now().nanoseconds // 1000
+    def publish_offboard_control_mode(self):
+        msg = OffboardControlMode()
+        msg.position = True
+        msg.velocity = False
+        msg.acceleration = False
+        msg.attitude = False
+        msg.body_rate = False
+        msg.timestamp = int(Clock().now().nanoseconds / 1000)
+        self.offboard_control_mode_publisher.publish(msg)
 
-        # --- 1. MODO OFFBOARD (Habilitamos Posición y Velocidad) ---
-        offboard = OffboardControlMode()
-        offboard.timestamp = now
-        offboard.position = True
-        offboard.velocity = True 
-        offboard.acceleration = False
-        self.offboard_pub.publish(offboard)
+    def publish_trajectory_setpoint(self, x, y, z, yaw):
+        msg = TrajectorySetpoint()
+        # Enviar comandos para mantener X, Y y Yaw iniciales, solo cambiando Z
+        msg.position = [x, y, z]
+        msg.yaw = yaw
+        msg.timestamp = int(Clock().now().nanoseconds / 1000)
+        self.trajectory_setpoint_publisher.publish(msg)
 
-        # --- 2. PREPARAR SETPOINT ---
-        setpoint = TrajectorySetpoint()
-        setpoint.timestamp = now
-
-        # Bloqueo de Yaw (Para que no gire como loco)
-        if self.locked_yaw is None:
-            self.locked_yaw = self.current_yaw
-        setpoint.yaw = self.locked_yaw
-
-        # --- 3. MÁQUINA DE ESTADOS ---
-
-        if self.state == "INIT":
-            # Paso 0: Esperar a que la conexión sea estable
-            setpoint.position = [0.0, 0.0, 0.0]
-            setpoint.velocity = [0.0, 0.0, 0.0]
-
-            if self.counter > 20: # 2 segundos de buffer
-                self.send_cmd(176, param1=1.0, param2=6.0) # Modo Offboard
-                self.state = "ARMING"
-
-        elif self.state == "ARMING":
-            setpoint.position = [0.0, 0.0, 0.0]
-            setpoint.velocity = [0.0, 0.0, 0.0]
-            
-            if self.counter > 30: # 1 segundo después
-                self.send_cmd(400, param1=1.0) # Armar motores
-                self.get_logger().info(">>> ARMADO. Iniciando ascenso...")
-                self.state = "CLIMBING"
-
-        elif self.state == "CLIMBING":
-            # Acción: Subir a 2 metros
-            setpoint.position = [0.0, 0.0, self.target_height]
-            
-            # Truco anti-drift: Velocidad X/Y en 0, Z controlada por posición (-0.8 ayuda a subir decidido)
-            setpoint.velocity = [0.0, 0.0, -0.8] 
-
-            # Lógica de transición: ¿Ya llegamos?
-            # Calculamos el error: Diferencia entre donde estoy y donde quiero ir
-            error_distancia = abs(self.current_z - self.target_height)
-
-            # Si el error es menor a 15cm (0.15), consideramos que LLEGAMOS
-            if error_distancia < 0.15:
-                self.state = "HOVERING"
-                self.hover_timer_ticks = 0 # <--- AQUÍ REINICIAMOS EL CONTADOR
-                self.get_logger().info(">>> ALTURA ALCANZADA. Iniciando conteo de 4 segundos...")
-
-        elif self.state == "HOVERING":
-            # Acción: Mantenerse quieto
-            setpoint.position = [0.0, 0.0, self.target_height]
-            setpoint.velocity = [0.0, 0.0, 0.0] # Freno total
-
-            # Lógica del Tiempo: Solo contamos aquí
-            self.hover_timer_ticks += 1
-            
-            # Convertimos ticks a segundos (cada tick es 0.1s)
-            tiempo_transcurrido = self.hover_timer_ticks * 0.1
-
-            if tiempo_transcurrido >= self.hold_time_seconds:
-                self.state = "DESCENDING"
-                self.get_logger().info(">>> 4 SEGUNDOS COMPLETADOS. Bajando...")
-
-        elif self.state == "DESCENDING":
-            # Acción: Bajar suave
-            setpoint.position = [0.0, 0.0, 0.0] # Ir al suelo
-            setpoint.velocity = [0.0, 0.0, 0.3] # Bajar lento (30 cm/s)
-
-            # Lógica de Aterrizaje: ¿Estamos cerca del suelo?
-            # En NED, el suelo es 0.0. Si z > -0.15 estamos a 15cm del piso.
-            if self.current_z > -0.15:
-                self.state = "LANDED"
-                self.send_cmd(400, param1=0.0) # Desarmar (Matar motores)
-                self.get_logger().info(">>> ATERRIZAJE TERMINADO. Motores apagados.")
-
-        elif self.state == "LANDED":
-            # Seguridad: Seguir enviando comando de apagado y posición cero
-            setpoint.position = [0.0, 0.0, 0.0]
-            setpoint.velocity = [0.0, 0.0, 0.0]
-
-        # Publicar el comando calculado
-        self.trajectory_pub.publish(setpoint)
-        self.counter += 1
-
-    def send_cmd(self, command, param1=0.0, param2=0.0):
+    def publish_vehicle_command(self, command, param1=0.0, param2=0.0):
         msg = VehicleCommand()
-        msg.timestamp = self.get_clock().now().nanoseconds // 1000
         msg.command = command
-        msg.param1 = float(param1)
-        msg.param2 = float(param2)
+        msg.param1 = param1
+        msg.param2 = param2
         msg.target_system = 1
         msg.target_component = 1
+        msg.source_system = 1
+        msg.source_component = 1
         msg.from_external = True
-        self.cmd_pub.publish(msg)
+        msg.timestamp = int(Clock().now().nanoseconds / 1000)
+        self.vehicle_command_publisher.publish(msg)
 
-def main():
-    rclpy.init()
-    node = PX4PreciseHover()
-    rclpy.spin(node)
-    node.destroy_node()
-    rclpy.shutdown()
+    def timer_callback(self):
+        if not self.position_initialized:
+            return
+
+        # Siempre debemos publicar el latido offboard y un setpoint
+        self.publish_offboard_control_mode()
+
+        if self.flight_state == "INIT":
+            # Cambiar a modo Offboard y Armar
+            self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_DO_SET_MODE, 1.0, 6.0) # Modo Offboard
+            self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0) # Armar
+            
+            if self.arming_state == VehicleStatus.ARMING_STATE_ARMED:
+                self.get_logger().info("Motores Armados. Subiendo en línea recta...")
+                self.flight_state = "CLIMBING"
+                
+            # Mantenerse en el piso mientras arma
+            self.publish_trajectory_setpoint(self.start_x, self.start_y, self.current_z, self.start_yaw)
+
+        elif self.flight_state == "CLIMBING":
+            # Subir recto (start_x, start_y) y sin girar (start_yaw)
+            self.publish_trajectory_setpoint(self.start_x, self.start_y, self.target_altitude, self.start_yaw)
+            
+            # Verificar si llegó a la altura (con tolerancia de 15 cm)
+            if abs(self.current_z - self.target_altitude) < 0.15:
+                self.get_logger().info("Altura alcanzada. Manteniendo posición por 8 segundos...")
+                self.hover_start_time = time.time()
+                self.flight_state = "HOVERING"
+
+        elif self.flight_state == "HOVERING":
+            # Mantener posición estricta en el aire
+            self.publish_trajectory_setpoint(self.start_x, self.start_y, self.target_altitude, self.start_yaw)
+            
+            if time.time() - self.hover_start_time >= self.hover_duration:
+                self.get_logger().info("Tiempo completado. Iniciando aterrizaje suave...")
+                self.flight_state = "LANDING"
+
+        elif self.flight_state == "LANDING":
+            # Le decimos a PX4 que gestione el aterrizaje (automáticamente baja despacio y desarma)
+            self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_NAV_LAND)
+            
+            if self.arming_state == VehicleStatus.ARMING_STATE_DISARMED:
+                self.get_logger().info("Dron aterrizado y desarmado. Misión exitosa.")
+                self.flight_state = "DONE"
+                
+        elif self.flight_state == "DONE":
+            # Detener el nodo de ROS
+            raise SystemExit
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = PrecisionFlightNode()
+    try:
+        rclpy.spin(node)
+    except SystemExit:
+        pass
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
 
 if __name__ == '__main__':
     main()
