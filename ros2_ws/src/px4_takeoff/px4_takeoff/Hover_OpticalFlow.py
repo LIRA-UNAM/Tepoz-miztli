@@ -41,7 +41,7 @@ class PX4FlowPrecision(Node):
         
         # Parámetros solicitados
         self.target_z = -2.5 # 2.5 metros de altura
-        self.hold_duration = 8.0 # 8 segundos estable
+        self.hold_duration = 5.0 # 8 segundos estable
 
         # Fases
         self.state = "INIT"
