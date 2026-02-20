@@ -13,9 +13,17 @@ class PrecisionFlightNode(Node):
     def __init__(self):
         super().__init__('precision_flight_node')
 
-        self.offboard_control_mode_publisher = self.create_publisher(OffboardControlMode, '/fmu/in/offboard_control_mode', 10)
-        self.trajectory_setpoint_publisher = self.create_publisher(TrajectorySetpoint, '/fmu/in/trajectory_setpoint', 10)
-        self.vehicle_command_publisher = self.create_publisher(VehicleCommand, '/fmu/in/vehicle_command', 10)
+        self.offboard_control_mode_publisher = self.create_publisher(
+            OffboardControlMode,
+            '/fmu/in/offboard_control_mode', 10)
+        
+        self.trajectory_setpoint_publisher = self.create_publisher(
+            TrajectorySetpoint,
+            '/fmu/in/trajectory_setpoint', 10)
+        
+        self.vehicle_command_publisher = self.create_publisher(
+            VehicleCommand,
+            '/fmu/in/vehicle_command', 10)
 
         self.local_position_sub = self.create_subscription(
             VehicleLocalPosition, 
@@ -42,11 +50,10 @@ class PrecisionFlightNode(Node):
         self.flight_state = "INIT"
         self.target_altitude = -2.5
         
-        # Trabajaremos a 20 Hz (0.05s). PX4 lo prefiere y es más estable.
-        self.timer = self.create_timer(0.05, self.timer_callback)
+        self.timer = self.create_timer(0.05, self.timer_callback) #20 Hz
         self.tick_counter = 0
         
-        self.get_logger().info("Nodo iniciado. Esperando datos de posición local...")
+        self.get_logger().info("Node Init")
 
     def position_callback(self, msg):
         self.current_z = msg.z
@@ -56,7 +63,7 @@ class PrecisionFlightNode(Node):
             self.start_y = msg.y
             self.start_yaw = msg.heading
             self.position_initialized = True
-            self.get_logger().info(f"Posición bloqueada: X={self.start_x:.2f}, Y={self.start_y:.2f}, Yaw={self.start_yaw:.2f}")
+            self.get_logger().info(f"Position in: X={self.start_x:.2f}, Y={self.start_y:.2f}, Yaw={self.start_yaw:.2f}")
 
     def status_callback(self, msg):
         self.nav_state = msg.nav_state
@@ -107,7 +114,6 @@ class PrecisionFlightNode(Node):
         self.tick_counter += 1
 
         if self.flight_state == "INIT":
-            # Publicamos durante 2 segundos (40 ticks a 20Hz) para satisfacer la seguridad de PX4
             self.publish_trajectory_setpoint(self.start_x, self.start_y, self.current_z, self.start_yaw, vz=math.nan)
             
             if self.tick_counter > 40:
@@ -118,41 +124,35 @@ class PrecisionFlightNode(Node):
         elif self.flight_state == "ARMING":
             self.publish_trajectory_setpoint(self.start_x, self.start_y, self.current_z, self.start_yaw, vz=math.nan)
             
-            # Esperamos 1 segundo más (20 ticks) para asentar el modo Offboard antes de armar
             if self.tick_counter > 20:
                 self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0)
                 
                 if self.arming_state == VehicleStatus.ARMING_STATE_ARMED:
-                    self.get_logger().info("ARMED. Ascendiendo recto con potencia (-0.8 m/s)...")
+                    self.get_logger().info("ARMED...")
                     self.flight_state = "CLIMBING"
                     self.tick_counter = 0
 
         elif self.flight_state == "CLIMBING":
-            # Forzamos la velocidad de subida (-0.8) manteniendo el XY bloqueado
             self.publish_trajectory_setpoint(self.start_x, self.start_y, self.target_altitude, self.start_yaw, vz=-0.8)
             
             if abs(self.current_z - self.target_altitude) < 0.20:
-                self.get_logger().info("HOLD POSITION. 2.5 metros alcanzados. Contando 8 segundos...")
+                self.get_logger().info("HOLD POSITION. 2.5 meters")
                 self.flight_state = "HOVERING"
                 self.tick_counter = 0
 
         elif self.flight_state == "HOVERING":
-            # Desactivamos el forzado de velocidad (NaN) para que solo pelee por mantener la posición
             self.publish_trajectory_setpoint(self.start_x, self.start_y, self.target_altitude, self.start_yaw, vz=math.nan)
             
-            # 8 segundos a 20Hz son 160 ticks
             if self.tick_counter > 160:
-                self.get_logger().info("LANDING. Iniciando descenso suave...")
+                self.get_logger().info("LANDING")
                 self.flight_state = "LANDING"
 
         elif self.flight_state == "LANDING":
-            # Bajamos a Z=0.0 forzando una velocidad controlada de 0.4 m/s
             self.publish_trajectory_setpoint(self.start_x, self.start_y, 0.0, self.start_yaw, vz=0.4)
             
-            # Si el dron ya reporta estar casi en el piso (-0.2m)
             if self.current_z > -0.20:
                 self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 0.0)
-                self.get_logger().info("LANDING COMPLETED. Motores desarmados.")
+                self.get_logger().info("LANDING COMPLETED.")
                 self.flight_state = "DONE"
                 
         elif self.flight_state == "DONE":
