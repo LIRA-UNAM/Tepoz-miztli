@@ -1,7 +1,6 @@
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
-import time
 import math
 
 from px4_msgs.msg import OffboardControlMode
@@ -42,10 +41,11 @@ class PrecisionFlightNode(Node):
         
         self.flight_state = "INIT"
         self.target_altitude = -2.5
-        self.hover_duration = 8.0
-        self.hover_start_time = 0.0
-
-        self.timer = self.create_timer(0.02, self.timer_callback) # 50 Hz
+        
+        # Trabajaremos a 20 Hz (0.05s). PX4 lo prefiere y es más estable.
+        self.timer = self.create_timer(0.05, self.timer_callback)
+        self.tick_counter = 0
+        
         self.get_logger().info("Nodo iniciado. Esperando datos de posición local...")
 
     def position_callback(self, msg):
@@ -66,7 +66,7 @@ class PrecisionFlightNode(Node):
         msg = OffboardControlMode()
         msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
         msg.position = True
-        msg.velocity = True # ¡AQUÍ ESTÁ LA CLAVE! Activamos el control de velocidad también
+        msg.velocity = True
         msg.acceleration = False
         msg.attitude = False
         msg.body_rate = False
@@ -78,8 +78,6 @@ class PrecisionFlightNode(Node):
         
         msg.position = [float(x), float(y), float(z)]
         msg.yaw = float(yaw)
-        
-        # Le decimos que no se mueva en X ni Y, pero le damos la velocidad vertical deseada (vz)
         msg.velocity = [0.0, 0.0, float(vz)]
         
         msg.acceleration = [math.nan, math.nan, math.nan]
@@ -106,43 +104,55 @@ class PrecisionFlightNode(Node):
             return
 
         self.publish_offboard_control_mode()
+        self.tick_counter += 1
 
         if self.flight_state == "INIT":
-            # Mandamos NaNs en la velocidad mientras está en el piso
+            # Publicamos durante 2 segundos (40 ticks a 20Hz) para satisfacer la seguridad de PX4
             self.publish_trajectory_setpoint(self.start_x, self.start_y, self.current_z, self.start_yaw, vz=math.nan)
             
-            self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_DO_SET_MODE, 1.0, 6.0)
-            self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0)
+            if self.tick_counter > 40:
+                self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_DO_SET_MODE, 1.0, 6.0)
+                self.flight_state = "ARMING"
+                self.tick_counter = 0
+
+        elif self.flight_state == "ARMING":
+            self.publish_trajectory_setpoint(self.start_x, self.start_y, self.current_z, self.start_yaw, vz=math.nan)
             
-            if self.arming_state == VehicleStatus.ARMING_STATE_ARMED:
-                self.get_logger().info("ARMED. Forzando ascenso a -0.8 m/s...")
-                self.flight_state = "CLIMBING"
+            # Esperamos 1 segundo más (20 ticks) para asentar el modo Offboard antes de armar
+            if self.tick_counter > 20:
+                self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0)
+                
+                if self.arming_state == VehicleStatus.ARMING_STATE_ARMED:
+                    self.get_logger().info("ARMED. Ascendiendo recto con potencia (-0.8 m/s)...")
+                    self.flight_state = "CLIMBING"
+                    self.tick_counter = 0
 
         elif self.flight_state == "CLIMBING":
-            # Le inyectamos la velocidad vertical de -0.8 igual que en tu código
+            # Forzamos la velocidad de subida (-0.8) manteniendo el XY bloqueado
             self.publish_trajectory_setpoint(self.start_x, self.start_y, self.target_altitude, self.start_yaw, vz=-0.8)
             
             if abs(self.current_z - self.target_altitude) < 0.20:
-                self.get_logger().info("HOLD POSITION. Manteniendo por 8 segundos...")
-                self.hover_start_time = time.time()
+                self.get_logger().info("HOLD POSITION. 2.5 metros alcanzados. Contando 8 segundos...")
                 self.flight_state = "HOVERING"
+                self.tick_counter = 0
 
         elif self.flight_state == "HOVERING":
-            # Quitamos la velocidad vertical (NaN) para que solo se quede clavado en la posición
+            # Desactivamos el forzado de velocidad (NaN) para que solo pelee por mantener la posición
             self.publish_trajectory_setpoint(self.start_x, self.start_y, self.target_altitude, self.start_yaw, vz=math.nan)
             
-            if time.time() - self.hover_start_time >= self.hover_duration:
-                self.get_logger().info("LANDING. Aterrizando suavemente...")
+            # 8 segundos a 20Hz son 160 ticks
+            if self.tick_counter > 160:
+                self.get_logger().info("LANDING. Iniciando descenso suave...")
                 self.flight_state = "LANDING"
 
         elif self.flight_state == "LANDING":
-            # Aterrizamos mandando la posición a 0 con una velocidad de bajada de 0.4 m/s
+            # Bajamos a Z=0.0 forzando una velocidad controlada de 0.4 m/s
             self.publish_trajectory_setpoint(self.start_x, self.start_y, 0.0, self.start_yaw, vz=0.4)
             
-            # Si ya detectó que tocó piso o está muy cerca de 0
+            # Si el dron ya reporta estar casi en el piso (-0.2m)
             if self.current_z > -0.20:
                 self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 0.0)
-                self.get_logger().info("LANDING COMPLETED. Desarmado.")
+                self.get_logger().info("LANDING COMPLETED. Motores desarmados.")
                 self.flight_state = "DONE"
                 
         elif self.flight_state == "DONE":
