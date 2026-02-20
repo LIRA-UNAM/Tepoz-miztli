@@ -16,26 +16,12 @@ class PX4FlowPrecision(Node):
     def __init__(self):
         super().__init__('px4_flow_precision')
 
-<<<<<<< HEAD
-        self.offboard_control_mode_publisher = self.create_publisher(
-            OffboardControlMode,
-            '/fmu/in/offboard_control_mode', 10)
-        
-        self.trajectory_setpoint_publisher = self.create_publisher(
-            TrajectorySetpoint,
-            '/fmu/in/trajectory_setpoint', 10)
-        
-        self.vehicle_command_publisher = self.create_publisher(
-            VehicleCommand,
-            '/fmu/in/vehicle_command', 10)
-=======
         qos_profile = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
             history=HistoryPolicy.KEEP_LAST,
             depth=1
         )
->>>>>>> f1de7cb6e54ece27f132d113176f2353eec4f9d9
 
         # Publishers
         self.offboard_pub = self.create_publisher(OffboardControlMode, '/fmu/in/offboard_control_mode', qos_profile)
@@ -57,36 +43,12 @@ class PX4FlowPrecision(Node):
         self.target_z = -2.5 # 2.5 metros de altura
         self.hold_duration = 5.0 # 8 segundos estable
 
-<<<<<<< HEAD
-        self.start_x = 0.0
-        self.start_y = 0.0
-        self.start_yaw = 0.0
-        
-        self.flight_state = "INIT"
-        self.target_altitude = -2.5
-        
-        self.timer = self.create_timer(0.05, self.timer_callback) #20 Hz
-        self.tick_counter = 0
-        
-        self.get_logger().info("Node Init")
-=======
         # Fases
         self.state = "INIT"
         self.hold_counter = 0
->>>>>>> f1de7cb6e54ece27f132d113176f2353eec4f9d9
 
     def local_pos_cb(self, msg):
         self.current_z = msg.z
-<<<<<<< HEAD
-        
-        if not self.position_initialized and msg.xy_valid and msg.z_valid:
-            self.start_x = msg.x
-            self.start_y = msg.y
-            self.start_yaw = msg.heading
-            self.position_initialized = True
-            self.get_logger().info(f"Position in: X={self.start_x:.2f}, Y={self.start_y:.2f}, Yaw={self.start_yaw:.2f}")
-=======
->>>>>>> f1de7cb6e54ece27f132d113176f2353eec4f9d9
 
     def attitude_cb(self, msg):
         """
@@ -178,67 +140,9 @@ class PX4FlowPrecision(Node):
         msg.from_external = True
         self.cmd_pub.publish(msg)
 
-<<<<<<< HEAD
-    def timer_callback(self):
-        if not self.position_initialized:
-            return
-
-        self.publish_offboard_control_mode()
-        self.tick_counter += 1
-
-        if self.flight_state == "INIT":
-            self.publish_trajectory_setpoint(self.start_x, self.start_y, self.current_z, self.start_yaw, vz=math.nan)
-            
-            if self.tick_counter > 40:
-                self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_DO_SET_MODE, 1.0, 6.0)
-                self.flight_state = "ARMING"
-                self.tick_counter = 0
-
-        elif self.flight_state == "ARMING":
-            self.publish_trajectory_setpoint(self.start_x, self.start_y, self.current_z, self.start_yaw, vz=math.nan)
-            
-            if self.tick_counter > 20:
-                self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0)
-                
-                if self.arming_state == VehicleStatus.ARMING_STATE_ARMED:
-                    self.get_logger().info("ARMED...")
-                    self.flight_state = "CLIMBING"
-                    self.tick_counter = 0
-
-        elif self.flight_state == "CLIMBING":
-            self.publish_trajectory_setpoint(self.start_x, self.start_y, self.target_altitude, self.start_yaw, vz=-0.8)
-            
-            if abs(self.current_z - self.target_altitude) < 0.20:
-                self.get_logger().info("HOLD POSITION. 2.5 meters")
-                self.flight_state = "HOVERING"
-                self.tick_counter = 0
-
-        elif self.flight_state == "HOVERING":
-            self.publish_trajectory_setpoint(self.start_x, self.start_y, self.target_altitude, self.start_yaw, vz=math.nan)
-            
-            if self.tick_counter > 160:
-                self.get_logger().info("LANDING")
-                self.flight_state = "LANDING"
-
-        elif self.flight_state == "LANDING":
-            self.publish_trajectory_setpoint(self.start_x, self.start_y, 0.0, self.start_yaw, vz=0.4)
-            
-            if self.current_z > -0.20:
-                self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 0.0)
-                self.get_logger().info("LANDING COMPLETED.")
-                self.flight_state = "DONE"
-                
-        elif self.flight_state == "DONE":
-            raise SystemExit
-
-def main(args=None):
-    rclpy.init(args=args)
-    node = PrecisionFlightNode()
-=======
 def main():
     rclpy.init()
     node = PX4FlowPrecision()
->>>>>>> f1de7cb6e54ece27f132d113176f2353eec4f9d9
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
