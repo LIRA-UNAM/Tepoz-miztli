@@ -1,8 +1,9 @@
 import rclpy
 from rclpy.node import Node
 from rclpy.clock import Clock
-from rclpy.qos import qos_profile_sensor_data  # <-- Importación crucial para solucionar el error de QoS
+from rclpy.qos import qos_profile_sensor_data
 import time
+import math # <-- Importamos math para usar NaN
 
 from px4_msgs.msg import OffboardControlMode
 from px4_msgs.msg import TrajectorySetpoint
@@ -14,12 +15,10 @@ class PrecisionFlightNode(Node):
     def __init__(self):
         super().__init__('precision_flight_node')
 
-        # Publishers (La configuración por defecto de QoS 10 es suficiente para publicar hacia PX4)
         self.offboard_control_mode_publisher = self.create_publisher(OffboardControlMode, '/fmu/in/offboard_control_mode', 10)
         self.trajectory_setpoint_publisher = self.create_publisher(TrajectorySetpoint, '/fmu/in/trajectory_setpoint', 10)
         self.vehicle_command_publisher = self.create_publisher(VehicleCommand, '/fmu/in/vehicle_command', 10)
 
-        # Subscribers (Aquí aplicamos qos_profile_sensor_data para coincidir con BEST_EFFORT de PX4)
         self.local_position_sub = self.create_subscription(
             VehicleLocalPosition, 
             '/fmu/out/vehicle_local_position', 
@@ -32,29 +31,24 @@ class PrecisionFlightNode(Node):
             self.status_callback, 
             qos_profile_sensor_data)
 
-        # Variables de estado
         self.nav_state = VehicleStatus.NAVIGATION_STATE_MAX
         self.arming_state = VehicleStatus.ARMING_STATE_DISARMED
         
-        # Posición actual
         self.current_x = 0.0
         self.current_y = 0.0
         self.current_z = 0.0
         self.current_yaw = 0.0
         self.position_initialized = False
 
-        # Referencias de despegue (para evitar drift y rotación)
         self.start_x = 0.0
         self.start_y = 0.0
         self.start_yaw = 0.0
         
-        # Máquina de estados del vuelo
         self.flight_state = "INIT"
-        self.target_altitude = -2.5  # NED (Negativo es hacia arriba)
-        self.hover_duration = 8.0    # Segundos
+        self.target_altitude = -2.5
+        self.hover_duration = 8.0
         self.hover_start_time = 0.0
 
-        # Timer a 50Hz (0.02 segundos)
         self.timer = self.create_timer(0.02, self.timer_callback)
         self.get_logger().info("Nodo iniciado. Esperando datos de posición local...")
 
@@ -64,7 +58,6 @@ class PrecisionFlightNode(Node):
         self.current_z = msg.z
         self.current_yaw = msg.heading
         
-        # Guardar la posición inicial una sola vez cuando el sensor (Optical Flow) empiece a publicar
         if not self.position_initialized and msg.xy_valid and msg.z_valid:
             self.start_x = msg.x
             self.start_y = msg.y
@@ -88,8 +81,18 @@ class PrecisionFlightNode(Node):
 
     def publish_trajectory_setpoint(self, x, y, z, yaw):
         msg = TrajectorySetpoint()
+        
+        # Asignamos la posición que deseamos
         msg.position = [float(x), float(y), float(z)]
         msg.yaw = float(yaw)
+        
+        # LA CORRECCIÓN DE POTENCIA: 
+        # Llenamos con NaN (Not a Number) para que PX4 no intente frenar el dron a 0.0 m/s
+        msg.velocity = [math.nan, math.nan, math.nan]
+        msg.acceleration = [math.nan, math.nan, math.nan]
+        msg.jerk = [math.nan, math.nan, math.nan]
+        msg.yawspeed = math.nan
+        
         msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
         self.trajectory_setpoint_publisher.publish(msg)
 
@@ -107,37 +110,30 @@ class PrecisionFlightNode(Node):
         self.vehicle_command_publisher.publish(msg)
 
     def timer_callback(self):
-        # No hacer nada hasta tener una lectura válida del Optical Flow
         if not self.position_initialized:
             return
 
-        # Latido constante a 50Hz
         self.publish_offboard_control_mode()
 
         if self.flight_state == "INIT":
-            # Enviar el setpoint actual antes de cambiar de modo (requisito de PX4)
             self.publish_trajectory_setpoint(self.start_x, self.start_y, self.current_z, self.start_yaw)
             
-            # Cambiar a Offboard y Armar
             self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_DO_SET_MODE, 1.0, 6.0)
             self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0)
             
             if self.arming_state == VehicleStatus.ARMING_STATE_ARMED:
-                self.get_logger().info("Motores Armados. Subiendo en línea recta...")
+                self.get_logger().info("Motores Armados. Subiendo con máxima potencia permitida...")
                 self.flight_state = "CLIMBING"
 
         elif self.flight_state == "CLIMBING":
-            # Subir manteniendo X, Y y Yaw fijos
             self.publish_trajectory_setpoint(self.start_x, self.start_y, self.target_altitude, self.start_yaw)
             
-            # Tolerancia de 15 cm para considerar que llegó a la meta
             if abs(self.current_z - self.target_altitude) < 0.15:
                 self.get_logger().info("Altura de 2.5m alcanzada. Manteniendo posición por 8 segundos...")
                 self.hover_start_time = time.time()
                 self.flight_state = "HOVERING"
 
         elif self.flight_state == "HOVERING":
-            # Mantener posición estricta en el aire
             self.publish_trajectory_setpoint(self.start_x, self.start_y, self.target_altitude, self.start_yaw)
             
             if time.time() - self.hover_start_time >= self.hover_duration:
@@ -145,7 +141,6 @@ class PrecisionFlightNode(Node):
                 self.flight_state = "LANDING"
 
         elif self.flight_state == "LANDING":
-            # Comando automático de aterrizaje de PX4
             self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_NAV_LAND)
             
             if self.arming_state == VehicleStatus.ARMING_STATE_DISARMED:
@@ -153,7 +148,6 @@ class PrecisionFlightNode(Node):
                 self.flight_state = "DONE"
                 
         elif self.flight_state == "DONE":
-            # Apagar el nodo limpiamente
             raise SystemExit
 
 def main(args=None):
