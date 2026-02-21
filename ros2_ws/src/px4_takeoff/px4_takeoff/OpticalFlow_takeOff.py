@@ -1,170 +1,169 @@
-import rclpy
-from rclpy.node import Node
-from rclpy.qos import qos_profile_sensor_data
+import rclpy 
 import math
+from rclpy.node import Node
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 
-from px4_msgs.msg import OffboardControlMode
-from px4_msgs.msg import TrajectorySetpoint
-from px4_msgs.msg import VehicleCommand
-from px4_msgs.msg import VehicleLocalPosition
-from px4_msgs.msg import VehicleStatus
+from px4_msgs.msg import(
+    OffboardControlMode,
+    TrajectorySetpoint,
+    VehicleCommand,
+    VehicleLocalPosition,
+    VehicleStatus,
+    VehicleAttitude
+)
 
-class PrecisionFlightNode(Node):
+class PX4FlowPrecision(Node):
     def __init__(self):
-        super().__init__('precision_flight_node')
+        super().__init__('px4_flow_precision')
 
-        self.offboard_control_mode_publisher = self.create_publisher(OffboardControlMode, '/fmu/in/offboard_control_mode', 10)
-        self.trajectory_setpoint_publisher = self.create_publisher(TrajectorySetpoint, '/fmu/in/trajectory_setpoint', 10)
-        self.vehicle_command_publisher = self.create_publisher(VehicleCommand, '/fmu/in/vehicle_command', 10)
+        qos_profile = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1
+        )
 
-        self.local_position_sub = self.create_subscription(
-            VehicleLocalPosition, 
-            '/fmu/out/vehicle_local_position', 
-            self.position_callback, 
-            qos_profile_sensor_data)
-            
-        self.vehicle_status_sub = self.create_subscription(
-            VehicleStatus, 
-            '/fmu/out/vehicle_status', 
-            self.status_callback, 
-            qos_profile_sensor_data)
+        # Publishers
+        self.offboard_pub = self.create_publisher(OffboardControlMode, '/fmu/in/offboard_control_mode', qos_profile)
+        self.trajectory_pub = self.create_publisher(TrajectorySetpoint, '/fmu/in/trajectory_setpoint', qos_profile)
+        self.cmd_pub = self.create_publisher(VehicleCommand, '/fmu/in/vehicle_command', qos_profile)
 
-        self.nav_state = VehicleStatus.NAVIGATION_STATE_MAX
-        self.arming_state = VehicleStatus.ARMING_STATE_DISARMED
-        
+        # Subscribers
+        self.local_pos_sub = self.create_subscription(VehicleLocalPosition, '/fmu/out/vehicle_local_position', self.local_pos_cb, qos_profile)
+        self.attitude_sub = self.create_subscription(VehicleAttitude, '/fmu/out/vehicle_attitude', self.attitude_cb, qos_profile)
+
+        self.timer = self.create_timer(0.1, self.timer_cb) # 10 Hz
+        self.counter = 0
+
+        # Posición actual (Añadimos X y Y)
+        self.current_x = 0.0
+        self.current_y = 0.0
         self.current_z = 0.0
-        self.position_initialized = False
+        self.current_yaw = 0.0
+        
+        # Posición bloqueada al armar
+        self.locked_x = None
+        self.locked_y = None
+        self.locked_yaw = None
+        
+        # Parámetros solicitados
+        self.target_z = -2.5 # 2.5 metros de altura
+        self.hold_duration = 5.0 # Segundos estable (Cámbialo a 8.0 si quieres 8s)
 
-        self.start_x = 0.0
-        self.start_y = 0.0
-        self.start_yaw = 0.0
-        
-        self.flight_state = "INIT"
-        self.target_altitude = -2.5
-        
-        # Trabajaremos a 20 Hz (0.05s). PX4 lo prefiere y es más estable.
-        self.timer = self.create_timer(0.05, self.timer_callback)
-        self.tick_counter = 0
-        
-        self.get_logger().info("Nodo iniciado. Esperando datos de posición local...")
+        # Fases
+        self.state = "INIT"
+        self.hold_counter = 0
 
-    def position_callback(self, msg):
+    def local_pos_cb(self, msg):
+        # Ahora leemos X y Y constantemente del Optical Flow
+        self.current_x = msg.x
+        self.current_y = msg.y
         self.current_z = msg.z
-        
-        if not self.position_initialized and msg.xy_valid and msg.z_valid:
-            self.start_x = msg.x
-            self.start_y = msg.y
-            self.start_yaw = msg.heading
-            self.position_initialized = True
-            self.get_logger().info(f"Posición bloqueada: X={self.start_x:.2f}, Y={self.start_y:.2f}, Yaw={self.start_yaw:.2f}")
 
-    def status_callback(self, msg):
-        self.nav_state = msg.nav_state
-        self.arming_state = msg.arming_state
+    def attitude_cb(self, msg):
+        """
+        Convertir Cuaterniones a Ángulo Euler Yaw para bloquear la rotación
+        """
+        q = msg.q
+        siny_cosp = 2 * (q[0] * q[3] + q[1] * q[2])
+        cosy_cosp = 1 - 2 * (q[2] * q[2] + q[3] * q[3])
+        yaw = math.atan2(siny_cosp, cosy_cosp)
+        self.current_yaw = yaw
 
-    def publish_offboard_control_mode(self):
-        msg = OffboardControlMode()
-        msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
-        msg.position = True
-        msg.velocity = True
-        msg.acceleration = False
-        msg.attitude = False
-        msg.body_rate = False
-        self.offboard_control_mode_publisher.publish(msg)
+    def timer_cb(self):
+        now = self.get_clock().now().nanoseconds // 1000
 
-    def publish_trajectory_setpoint(self, x, y, z, yaw, vz):
-        msg = TrajectorySetpoint()
-        msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
-        
-        msg.position = [float(x), float(y), float(z)]
-        msg.yaw = float(yaw)
-        msg.velocity = [0.0, 0.0, float(vz)]
-        
-        msg.acceleration = [math.nan, math.nan, math.nan]
-        msg.jerk = [math.nan, math.nan, math.nan]
-        msg.yawspeed = math.nan
-        
-        self.trajectory_setpoint_publisher.publish(msg)
+        # MODO OFFBOARD
+        offboard = OffboardControlMode()
+        offboard.timestamp = now
+        offboard.position = True 
+        offboard.velocity = True
+        offboard.acceleration = False
+        self.offboard_pub.publish(offboard)
 
-    def publish_vehicle_command(self, command, param1=0.0, param2=0.0):
+        # SETPOINT
+        setpoint = TrajectorySetpoint()
+        setpoint.timestamp = now
+
+        # Capturamos la posición real (X, Y, Yaw) justo antes de despegar
+        if self.state == "INIT" or self.state == "ARMING":
+            self.locked_x = self.current_x
+            self.locked_y = self.current_y
+            self.locked_yaw = self.current_yaw
+
+        # Asignamos de forma segura las variables bloqueadas
+        safe_x = self.locked_x if self.locked_x is not None else 0.0
+        safe_y = self.locked_y if self.locked_y is not None else 0.0
+        setpoint.yaw = self.locked_yaw if self.locked_yaw is not None else 0.0
+        
+        # Valores por defecto para mantener todo bloqueado en piso
+        setpoint.velocity = [0.0, 0.0, float('nan')]
+        setpoint.position = [float('nan'), float('nan'), float('nan')]
+
+        # MÁQUINA DE ESTADOS
+        if self.state == "INIT":
+            if self.counter > 20:
+                self.send_cmd(176, param1=1.0, param2=6.0) # Entrar a Offboard
+                self.state = "ARMING"
+
+        elif self.state == "ARMING":
+            if self.counter > 30:
+                self.send_cmd(400, param1=1.0) # Armar motores
+                self.get_logger().info("ARMED - Ascendiendo a 2.5m")
+                self.state = "TAKEOFF"
+
+        elif self.state == "TAKEOFF":
+            # Subimos anclados a la posición X y Y real capturada en piso
+            setpoint.position = [safe_x, safe_y, self.target_z]
+            setpoint.velocity = [0.0, 0.0, -0.8] # Inyección de potencia para subir
+
+            if abs(self.current_z - self.target_z) < 0.15: 
+                self.state = "HOLD"
+                self.get_logger().info("HOLD POSITION - Manteniendo altura y posición")
+
+        elif self.state == "HOLD":
+            # Mantenemos las coordenadas de origen real y la altura meta
+            setpoint.position = [safe_x, safe_y, self.target_z]
+            
+            # SOLUCIÓN DE DRIFT: NaN en la velocidad para que el PID tenga libertad
+            # de acelerar e inclinar el dron agresivamente hacia los lados si hay viento o drift
+            setpoint.velocity = [float('nan'), float('nan'), float('nan')]
+            
+            self.hold_counter += 1
+            pass_time = self.hold_counter * 0.1 # A 10Hz, 1 tick es 0.1s
+            if pass_time >= self.hold_duration:
+                self.state = "LAND"
+                self.get_logger().info("LANDING - Aterrizando suavemente")
+
+        elif self.state == "LAND":
+            # Aterrizamos bajando exactamente sobre las mismas coordenadas bloqueadas
+            setpoint.position = [safe_x, safe_y, 0.0]
+            setpoint.velocity = [0.0, 0.0, 0.4] # Velocidad de descenso controlada
+            
+            if self.current_z > -0.20:
+                self.state = "LANDED"
+                self.send_cmd(400, param1=0.0) # Desarmar motores
+                self.get_logger().info("LANDING COMPLETED - Motores desarmados")
+
+        self.trajectory_pub.publish(setpoint)
+        self.counter += 1
+
+    def send_cmd(self, command, param1=0.0, param2=0.0):
         msg = VehicleCommand()
-        msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
+        msg.timestamp = self.get_clock().now().nanoseconds // 1000
         msg.command = command
         msg.param1 = float(param1)
         msg.param2 = float(param2)
         msg.target_system = 1
         msg.target_component = 1
-        msg.source_system = 1
-        msg.source_component = 1
         msg.from_external = True
-        self.vehicle_command_publisher.publish(msg)
+        self.cmd_pub.publish(msg)
 
-    def timer_callback(self):
-        if not self.position_initialized:
-            return
-
-        self.publish_offboard_control_mode()
-        self.tick_counter += 1
-
-        if self.flight_state == "INIT":
-            # Publicamos durante 2 segundos (40 ticks a 20Hz) para satisfacer la seguridad de PX4
-            self.publish_trajectory_setpoint(self.start_x, self.start_y, self.current_z, self.start_yaw, vz=math.nan)
-            
-            if self.tick_counter > 40:
-                self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_DO_SET_MODE, 1.0, 6.0)
-                self.flight_state = "ARMING"
-                self.tick_counter = 0
-
-        elif self.flight_state == "ARMING":
-            self.publish_trajectory_setpoint(self.start_x, self.start_y, self.current_z, self.start_yaw, vz=math.nan)
-            
-            # Esperamos 1 segundo más (20 ticks) para asentar el modo Offboard antes de armar
-            if self.tick_counter > 20:
-                self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0)
-                
-                if self.arming_state == VehicleStatus.ARMING_STATE_ARMED:
-                    self.get_logger().info("ARMED. Ascendiendo recto con potencia (-0.8 m/s)...")
-                    self.flight_state = "CLIMBING"
-                    self.tick_counter = 0
-
-        elif self.flight_state == "CLIMBING":
-            # Forzamos la velocidad de subida (-0.8) manteniendo el XY bloqueado
-            self.publish_trajectory_setpoint(self.start_x, self.start_y, self.target_altitude, self.start_yaw, vz=-0.8)
-            
-            if abs(self.current_z - self.target_altitude) < 0.20:
-                self.get_logger().info("HOLD POSITION. 2.5 metros alcanzados. Contando 8 segundos...")
-                self.flight_state = "HOVERING"
-                self.tick_counter = 0
-
-        elif self.flight_state == "HOVERING":
-            # Desactivamos el forzado de velocidad (NaN) para que solo pelee por mantener la posición
-            self.publish_trajectory_setpoint(self.start_x, self.start_y, self.target_altitude, self.start_yaw, vz=math.nan)
-            
-            # 8 segundos a 20Hz son 160 ticks
-            if self.tick_counter > 160:
-                self.get_logger().info("LANDING. Iniciando descenso suave...")
-                self.flight_state = "LANDING"
-
-        elif self.flight_state == "LANDING":
-            # Bajamos a Z=0.0 forzando una velocidad controlada de 0.4 m/s
-            self.publish_trajectory_setpoint(self.start_x, self.start_y, 0.0, self.start_yaw, vz=0.4)
-            
-            # Si el dron ya reporta estar casi en el piso (-0.2m)
-            if self.current_z > -0.20:
-                self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 0.0)
-                self.get_logger().info("LANDING COMPLETED. Motores desarmados.")
-                self.flight_state = "DONE"
-                
-        elif self.flight_state == "DONE":
-            raise SystemExit
-
-def main(args=None):
-    rclpy.init(args=args)
-    node = PrecisionFlightNode()
+def main():
+    rclpy.init()
+    node = PX4FlowPrecision()
     try:
         rclpy.spin(node)
-    except SystemExit:
-        pass
     except KeyboardInterrupt:
         pass
     finally:
