@@ -48,11 +48,11 @@ class PX4FlowPrecision(Node):
         
         # Parámetros solicitados
         self.target_z = -2.5 # 2.5 metros de altura
-        self.hold_duration = 8.0 # Segundos estables reales
+        self.hold_duration = 10.0 # Segundos estables reales
 
-        # Fases y control de tiempo real
+        # Fases y control de tiempo
         self.state = "INIT"
-        self.hold_start_time = 0.0 # Nuevo reloj para medir los 8 segundos
+        self.hold_start_time = 0.0 
 
     def local_pos_cb(self, msg):
         self.current_x = msg.x
@@ -69,18 +69,12 @@ class PX4FlowPrecision(Node):
     def timer_cb(self):
         now = self.get_clock().now().nanoseconds // 1000
 
-        # MODO OFFBOARD DINÁMICO
+        # MODO OFFBOARD ESTÁTICO (CORRECCIÓN CRÍTICA: Nunca cambiar estos booleanos)
         offboard = OffboardControlMode()
         offboard.timestamp = now
         offboard.position = True 
+        offboard.velocity = True  
         offboard.acceleration = False
-        
-        # LA SOLUCIÓN: Apagamos el requerimiento de velocidad en HOLD e INIT para no confundir a PX4
-        if self.state == "TAKEOFF" or self.state == "LAND":
-            offboard.velocity = True
-        else:
-            offboard.velocity = False
-            
         self.offboard_pub.publish(offboard)
 
         # SETPOINT
@@ -96,7 +90,8 @@ class PX4FlowPrecision(Node):
         safe_y = self.locked_y if self.locked_y is not None else 0.0
         setpoint.yaw = self.locked_yaw if self.locked_yaw is not None else 0.0
         
-        setpoint.velocity = [float('nan'), float('nan'), float('nan')]
+        # Valores base seguros para no confundir a PX4 en el piso
+        setpoint.velocity = [0.0, 0.0, float('nan')]
         setpoint.position = [float('nan'), float('nan'), float('nan')]
 
         # MÁQUINA DE ESTADOS
@@ -117,19 +112,26 @@ class PX4FlowPrecision(Node):
 
             if abs(self.current_z - self.target_z) < 0.15: 
                 self.state = "HOLD"
-                # Activamos el cronómetro real capturando la marca de tiempo exacta
+                # Activamos cronómetro real
                 self.hold_start_time = self.get_clock().now().nanoseconds / 1e9
-                self.get_logger().info(f"HOLD POSITION - Manteniendo posición por {self.hold_duration}s")
+                self.get_logger().info(f"HOLD POSITION - Iniciando {self.hold_duration}s exactos")
 
         elif self.state == "HOLD":
             setpoint.position = [safe_x, safe_y, self.target_z]
             setpoint.velocity = [float('nan'), float('nan'), float('nan')]
             
-            # Comparamos el tiempo actual contra el tiempo guardado
+            # FAILSAFE: Si el dron se cae (altura menor a 0.5m del piso), apagamos motores.
+            if self.current_z > -0.5:
+                self.get_logger().warn("¡Caída detectada! Apagando motores por seguridad.")
+                self.send_cmd(400, param1=0.0)
+                self.state = "LANDED"
+                return
+            
+            # Chequeo de tiempo en segundos reales
             current_time = self.get_clock().now().nanoseconds / 1e9
             if (current_time - self.hold_start_time) >= self.hold_duration:
                 self.state = "LAND"
-                self.get_logger().info("LANDING - Aterrizando suavemente")
+                self.get_logger().info("LANDING - Tiempo completado, descendiendo")
 
         elif self.state == "LAND":
             setpoint.position = [safe_x, safe_y, 0.0]
