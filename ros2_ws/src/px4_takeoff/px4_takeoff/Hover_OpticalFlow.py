@@ -35,22 +35,22 @@ class PX4FlowPrecision(Node):
         self.timer = self.create_timer(0.1, self.timer_cb) # 10 Hz
         self.counter = 0
 
-        # Posición actual
+        # Posição atual
         self.current_x = 0.0
         self.current_y = 0.0
         self.current_z = 0.0
         self.current_yaw = 0.0
         
-        # Posición bloqueada al armar
+        # Posição bloqueada ao armar os motores
         self.locked_x = None
         self.locked_y = None
         self.locked_yaw = None
         
-        # Parámetros solicitados
-        self.target_z = -2.5 # 2.5 metros de altura
-        self.hold_duration = 10.0 # Segundos estables reales
+        # Parâmetros solicitados
+        self.target_z = -2.5 # 2.5 metros de altitude
+        self.hold_duration = 8.0 # Segundos reais de estabilidade
 
-        # Fases y control de tiempo
+        # Fases e controlo de tempo
         self.state = "INIT"
         self.hold_start_time = 0.0 
 
@@ -69,7 +69,7 @@ class PX4FlowPrecision(Node):
     def timer_cb(self):
         now = self.get_clock().now().nanoseconds // 1000
 
-        # MODO OFFBOARD ESTÁTICO (CORRECCIÓN CRÍTICA: Nunca cambiar estos booleanos)
+        # MODO OFFBOARD ESTÁTICO 
         offboard = OffboardControlMode()
         offboard.timestamp = now
         offboard.position = True 
@@ -90,7 +90,7 @@ class PX4FlowPrecision(Node):
         safe_y = self.locked_y if self.locked_y is not None else 0.0
         setpoint.yaw = self.locked_yaw if self.locked_yaw is not None else 0.0
         
-        # Valores base seguros para no confundir a PX4 en el piso
+        # Valores base seguros
         setpoint.velocity = [0.0, 0.0, float('nan')]
         setpoint.position = [float('nan'), float('nan'), float('nan')]
 
@@ -103,7 +103,7 @@ class PX4FlowPrecision(Node):
         elif self.state == "ARMING":
             if self.counter > 30:
                 self.send_cmd(400, param1=1.0) 
-                self.get_logger().info("ARMED - Ascendiendo a 2.5m")
+                self.get_logger().info("ARMED - A subir para 2.5m")
                 self.state = "TAKEOFF"
 
         elif self.state == "TAKEOFF":
@@ -112,26 +112,30 @@ class PX4FlowPrecision(Node):
 
             if abs(self.current_z - self.target_z) < 0.15: 
                 self.state = "HOLD"
-                # Activamos cronómetro real
+                # Ativamos o cronómetro real
                 self.hold_start_time = self.get_clock().now().nanoseconds / 1e9
-                self.get_logger().info(f"HOLD POSITION - Iniciando {self.hold_duration}s exactos")
+                self.get_logger().info(f"HOLD POSITION - A iniciar {self.hold_duration}s exatos no ar")
 
         elif self.state == "HOLD":
             setpoint.position = [safe_x, safe_y, self.target_z]
-            setpoint.velocity = [float('nan'), float('nan'), float('nan')]
             
-            # FAILSAFE: Si el dron se cae (altura menor a 0.5m del piso), apagamos motores.
+            # SOLUÇÃO PARA MANTER A POTÊNCIA: 
+            # X e Y em NaN para combater o drift. 
+            # Z em 0.0 explícito para obrigar os motores a manterem a sustentação exata!
+            setpoint.velocity = [float('nan'), float('nan'), 0.0]
+            
+            # Failsafe para evitar danos caso algo corra mal
             if self.current_z > -0.5:
-                self.get_logger().warn("¡Caída detectada! Apagando motores por seguridad.")
+                self.get_logger().warn("Queda detetada! A desligar motores por segurança.")
                 self.send_cmd(400, param1=0.0)
                 self.state = "LANDED"
                 return
             
-            # Chequeo de tiempo en segundos reales
+            # Verificação do tempo em segundos reais
             current_time = self.get_clock().now().nanoseconds / 1e9
             if (current_time - self.hold_start_time) >= self.hold_duration:
                 self.state = "LAND"
-                self.get_logger().info("LANDING - Tiempo completado, descendiendo")
+                self.get_logger().info("LANDING - Tempo concluído, a iniciar descida")
 
         elif self.state == "LAND":
             setpoint.position = [safe_x, safe_y, 0.0]
