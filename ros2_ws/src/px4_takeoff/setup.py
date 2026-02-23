@@ -24,6 +24,7 @@ setup(
             # 'OpticalFLow_takeoff = px4_takeoff.OpticalFlow_takeOff:main', #Quique
             'Hover_OpticalFLow = px4_takeoff.Hover_OpticalFlow:main', #Quique 2
             # 'Trajectory = px4_takeoff.Trajectory_Test:main', #Quique
+            'sensor_position = px4_takeoff.sensor_position:main',
         ],
     },
 )
