@@ -1,37 +1,21 @@
-#!/usr/bin/env python3
-
-import rclpy
+import rclpy 
+import math
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
-from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleCommand, VehicleLocalPosition
-import numpy as np
-import enum
 
-class FlightState(enum.Enum):
-    """
-    Definición de los nodos topológicos para la Máquina de Estados Finitos.
-    """
-    INIT = 0
-    TAKEOFF = 1
-    HOLD = 2
-    LAND = 3
-    DONE = 4
+from px4_msgs.msg import(
+    OffboardControlMode,
+    TrajectorySetpoint,
+    VehicleCommand,
+    VehicleLocalPosition,
+    VehicleStatus,
+    VehicleAttitude
+)
 
-class OffboardControlNode(Node):
-    """
-    Controlador central Offboard operando bajo el framework ROS 2 Humble/Iron.
-    Resuelve crónicamente las colisiones de latencia de heartbeats y mitiga la
-    deriva estocástica mediante la asignación matemática estricta de variables NaN
-    para aislar lazos de control cinemático.
-    """
+class PX4FlowPrecision(Node):
     def __init__(self):
-        super().__init__('offboard_control_node')
+        super().__init__('px4_flow_precision')
 
-        # ---------------------------------------------------------------------
-        # PERFIL DE CALIDAD DE SERVICIO (QoS)
-        # Adaptación microscópica indispensable para que Micro XRCE-DDS
-        # puenteé los paquetes con el RTOS interno del Pixhawk 6x.
-        # ---------------------------------------------------------------------
         qos_profile = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
@@ -39,169 +23,157 @@ class OffboardControlNode(Node):
             depth=1
         )
 
-        # ---------------------------------------------------------------------
-        # PUBLICADORES Y SUSCRIPTORES
-        # ---------------------------------------------------------------------
-        self.offboard_mode_pub = self.create_publisher(
+        # Publishers
+        self.offboard_pub = self.create_publisher(
             OffboardControlMode, '/fmu/in/offboard_control_mode', qos_profile)
         self.trajectory_pub = self.create_publisher(
             TrajectorySetpoint, '/fmu/in/trajectory_setpoint', qos_profile)
-        self.vehicle_command_pub = self.create_publisher(
+        self.cmd_pub = self.create_publisher(
             VehicleCommand, '/fmu/in/vehicle_command', qos_profile)
 
+        # Subscribers
         self.local_pos_sub = self.create_subscription(
-            VehicleLocalPosition, '/fmu/out/vehicle_local_position', 
-            self.local_position_callback, qos_profile)
+            VehicleLocalPosition, '/fmu/out/vehicle_local_position', self.local_pos_cb, qos_profile)
+        self.attitude_sub = self.create_subscription(
+            VehicleAttitude, '/fmu/out/vehicle_attitude', self.attitude_cb, qos_profile)
 
-        # ---------------------------------------------------------------------
-        # CONTEXTO DE VARIABLE LOCAL Y PARÁMETROS GEOMÉTRICOS
-        # ---------------------------------------------------------------------
-        self.state = FlightState.INIT
-        self.local_pos = np.array([0.0, 0.0, 0.0])
-        # Altura en marco Local NED (North, East, Down). Down negativo implica Ascenso.
-        self.target_altitude = -2.5  
-        self.hold_time_start = 0.0
-        self.hold_duration = 10.0    # Umbral paramétrico del estacionamiento temporal
+        self.timer = self.create_timer(0.1, self.timer_cb) # 10 Hz
+        self.counter = 0
 
-        # ---------------------------------------------------------------------
-        # CRONÓMETRO LATIDO (HEARTBEAT TIMER)
-        # 20 Hz = Período de 0.05s. Satisface el requisito paramétrico de >2 Hz 
-        # impuesto por el módulo commander de PX4 para preservar la viabilidad.
-        # ---------------------------------------------------------------------
-        timer_period = 0.05 
-        self.timer = self.create_timer(timer_period, self.timer_callback)
-
-        self.get_logger().info("Nodo de control arquitectónico Offboard inicializado.")
-
-    def local_position_callback(self, msg):
-        """
-        Extracción asíncrona del estimado cartesiano consolidado por el EKF2.
-        """
-        self.local_pos = msg.x
-        self.local_pos = msg.y
-        self.local_pos = msg.z
-
-    def timer_callback(self):
-        """
-        Orquestador cíclico determinista. Es el núcleo que evita la paralización
-        del Event Loop, suplantando cualquier instrucción perjudicial tipo 'sleep()'.
-        """
-        if self.state == FlightState.DONE:
-            return
-
-        # 1. EMISIÓN INCONDICIONAL DE LA MÁSCARA BOOLEANA (HEARTBEAT VITAL)
-        self.publish_offboard_control_mode()
-
-        # 2. TRANSICIÓN A TRAVÉS DEL LÁTICE DE LA MÁQUINA DE ESTADOS
-        if self.state == FlightState.INIT:
-            self.arm_vehicle()
-            self.set_offboard_mode()
-            self.state = FlightState.TAKEOFF
-            self.get_logger().info("Inicialización validada. Desencadenando fase TAKEOFF (2.5m).")
-
-        elif self.state == FlightState.TAKEOFF:
-            # Consigna Rígida Posicional. Velocidades delegadas al PID (NaN).
-            self.publish_position_setpoint(0.0, 0.0, self.target_altitude)
-            
-            # Condición de superación de umbral geométrico con hiséresis de tolerancia (0.2m)
-            # Como Z desciende negativamente durante el ascenso, evaluamos por <=
-            if self.local_pos <= (self.target_altitude + 0.2):
-                self.state = FlightState.HOLD
-                # Retención escalar temporal proveniente del núcleo basal ROS, NO bloqueante.
-                self.hold_time_start = self.get_clock().now().nanoseconds / 1e9
-                self.get_logger().info("Altitud cinemática lograda. Transitando a ciclo estacionario HOLD (10s).")
-
-        elif self.state == FlightState.HOLD:
-            # El mantenimiento (Hover) en PX4 exige publicar IDÉNTICA coordenada de 
-            # posición que la fijada previamente. No alterar a ceros ni inyectar control veloz.
-            self.publish_position_setpoint(0.0, 0.0, self.target_altitude)
-
-            # Escrutinio aritmético del transcurso temporal contra reloj de referencia
-            current_time = self.get_clock().now().nanoseconds / 1e9
-            elapsed = current_time - self.hold_time_start
-            
-            if elapsed >= self.hold_duration:
-                self.state = FlightState.LAND
-                self.get_logger().info("Estabilidad escalar expirada. Desencadenando maniobra LAND.")
-
-        elif self.state == FlightState.LAND:
-            # Emisión imperativa de la orden absoluta de Aterrizaje al gestor uORB.
-            self.land_vehicle()
-            self.state = FlightState.DONE
-
-    def publish_offboard_control_mode(self):
-        """
-        Arbitraje del enrutador de mensajes. Ordena al sistema ignorar bucles cinemáticos
-        y abocarse exclusivamente al error posicional. 
-        """
-        msg = OffboardControlMode()
-        msg.position = True
-        msg.velocity = False
-        msg.acceleration = False
-        msg.attitude = False
-        msg.body_rate = False
-        msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
-        self.offboard_mode_pub.publish(msg)
-
-    def publish_position_setpoint(self, x, y, z):
-        """
-        Construcción meticulosa del vector de control.
-        La saturación rigurosa de velocidades y tirones con NaN (Not a Number)
-        fuerza estructuralmente al Firmware PX4 a computarlos endógenamente.
-        Si se omitieran o se igualaran a ceros absolutos, chocaría la cascada PID.
-        """
-        msg = TrajectorySetpoint()
-        msg.position = [x, y, z]
-        # Cumplimiento del estándar IEEE 754 ineludible en arquitecturas complejas PX4.
-        msg.velocity = [np.nan, np.nan, np.nan]
-        msg.acceleration = [np.nan, np.nan, np.nan]
-        msg.jerk = [np.nan, np.nan, np.nan]
+        # Posición actual (Añadimos X y Y)
+        self.current_x = 0.0
+        self.current_y = 0.0
+        self.current_z = 0.0
+        self.current_yaw = 0.0
         
-        # Orientación inercial sostenida
-        msg.yaw = 0.0
-        msg.yawspeed = np.nan
-        msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
+        # Posición bloqueada al armar
+        self.locked_x = None
+        self.locked_y = None
+        self.locked_yaw = None
         
-        self.trajectory_pub.publish(msg)
+        # Parámetros solicitados
+        self.target_z = -2.5 # 2.5 metros de altura
+        self.hold_duration = 10.0 # Segundos estables
 
-    def publish_vehicle_command(self, command, param1=0.0, param2=0.0, param7=0.0):
+        # Fases
+        self.state = "INIT"
+        self.hold_counter = 0
+
+    def local_pos_cb(self, msg):
+        # Ahora leemos X y Y constantemente del Optical Flow
+        self.current_x = msg.x
+        self.current_y = msg.y
+        self.current_z = msg.z
+
+    def attitude_cb(self, msg):
         """
-        Abstracción sistémica para transmisión de códigos MAV_CMD encapsulados.
+        Convertir Cuaterniones a Ángulo Euler Yaw para bloquear la rotación
         """
+        q = msg.q
+        siny_cosp = 2 * (q[0] * q[3] + q[1] * q[2])
+        cosy_cosp = 1 - 2 * (q[2] * q[2] + q[3] * q[3])
+        yaw = math.atan2(siny_cosp, cosy_cosp)
+        self.current_yaw = yaw
+
+    def timer_cb(self):
+        now = self.get_clock().now().nanoseconds // 1000
+
+        # MODO OFFBOARD
+        offboard = OffboardControlMode()
+        offboard.timestamp = now
+        offboard.position = True 
+        offboard.velocity = False #En False funciona mucho mejor
+        offboard.acceleration = False
+        self.offboard_pub.publish(offboard)
+
+        # SETPOINT
+        setpoint = TrajectorySetpoint()
+        setpoint.timestamp = now
+
+        # Capturamos la posición real (X, Y, Yaw) justo antes de despegar
+        if self.state == "INIT" or self.state == "ARMING":
+            self.locked_x = self.current_x
+            self.locked_y = self.current_y
+            self.locked_yaw = self.current_yaw
+
+        # Asignamos de forma segura las variables bloqueadas
+        safe_x = self.locked_x if self.locked_x is not None else 0.0
+        safe_y = self.locked_y if self.locked_y is not None else 0.0
+        setpoint.yaw = self.locked_yaw if self.locked_yaw is not None else 0.0
+        
+        # Valores por defecto para mantener todo bloqueado en piso
+        setpoint.velocity = [float('nan'), float('nan'), float('nan')]
+        setpoint.position = [float('nan'), float('nan'), float('nan')]
+        setpoint.acceleartion = [float('nan'), float('nan'), float('nan')]
+        setpoint.jerk = [float('nan'), float('nan'), float('nan')]
+        setpoint.yawspeed = float('nan')
+
+        # MÁQUINA DE ESTADOS
+        if self.state == "INIT":
+            if self.counter > 20:
+                self.send_cmd(176, param1=1.0, param2=6.0) # Entrar a Offboard
+                self.state = "ARMING"
+
+        elif self.state == "ARMING":
+            if self.counter > 30:
+                self.send_cmd(400, param1=1.0) # Armar motores
+                self.get_logger().info("ARMED - Ascendiendo a 2.5m")
+                self.state = "TAKEOFF"
+
+        elif self.state == "TAKEOFF":
+            # Subimos anclados a la posición X y Y real capturada en piso
+            setpoint.position = [safe_x, safe_y, self.target_z]
+            setpoint.velocity = [0.0, 0.0, -0.8] # Inyección de potencia para subir
+
+            if abs(self.current_z - self.target_z) < 0.15: 
+                self.state = "HOLD"
+                self.get_logger().info("HOLD POSITION - Manteniendo altura y posición")
+
+        elif self.state == "HOLD":
+            # Mantenemos las coordenadas de origen real y la altura meta
+            setpoint.position = [safe_x, safe_y, self.target_z]
+            setpoint.velocity = [float('nan'), float('nan'), float('nan')]
+            # setpoint.velocity = [0.0, 0.0, 0.0] #Se puede probar con float('nan')
+                        
+            self.hold_counter += 1
+            pass_time = self.hold_counter * 0.1 # A 10Hz, 1 tick es 0.1s
+            if pass_time >= self.hold_duration:
+                self.state = "LAND"
+                self.get_logger().info("LANDING - Aterrizando suavemente")
+
+        elif self.state == "LAND":
+            # Aterrizamos bajando exactamente sobre las mismas coordenadas bloqueadas
+            setpoint.position = [safe_x, safe_y, 0.0]
+            setpoint.velocity = [0.0, 0.0, 0.4] # Velocidad de descenso controlada
+            
+            if self.current_z > -0.20:
+                self.state = "LANDED"
+                self.send_cmd(400, param1=0.0) # Desarmar motores
+                self.get_logger().info("LANDING COMPLETED - Motores desarmados")
+
+        self.trajectory_pub.publish(setpoint)
+        self.counter += 1
+
+    def send_cmd(self, command, param1=0.0, param2=0.0):
         msg = VehicleCommand()
+        msg.timestamp = self.get_clock().now().nanoseconds // 1000
+        msg.command = command
         msg.param1 = float(param1)
         msg.param2 = float(param2)
-        msg.param7 = float(param7)
-        msg.command = command
         msg.target_system = 1
         msg.target_component = 1
-        msg.source_system = 1
-        msg.source_component = 1
         msg.from_external = True
-        msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
-        self.vehicle_command_pub.publish(msg)
+        self.cmd_pub.publish(msg)
 
-    def arm_vehicle(self):
-        self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, param1=1.0)
-
-    def set_offboard_mode(self):
-        self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_DO_SET_MODE, param1=1.0, param2=6.0)
-
-    def land_vehicle(self):
-        self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_NAV_LAND)
-
-def main(args=None):
-    rclpy.init(args=args)
-    offboard_control_node = OffboardControlNode()
-    
+def main():
+    rclpy.init()
+    node = PX4FlowPrecision()
     try:
-        # El comando 'spin' monopoliza asíncronamente el hilo principal del procesador.
-        # Gestiona las llamadas retrospectivas (callbacks) de los timers sin paralizar el entorno.
-        rclpy.spin(offboard_control_node)
+        rclpy.spin(node)
     except KeyboardInterrupt:
-        offboard_control_node.get_logger().info("Aborto dictaminado por terminal del usuario.")
+        pass
     finally:
-        offboard_control_node.destroy_node()
+        node.destroy_node()
         rclpy.shutdown()
 
 if __name__ == '__main__':
