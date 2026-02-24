@@ -45,6 +45,10 @@ publications:
 
   - topic: /fmu/out/sensor_combined
     type: px4_msgs::msg::SensorCombined
+    
+  - topic: /fmu/out/distance_sensor
+    type: px4_msgs::msg::DistanceSensor
+    rate_limit: 50.
 
   - topic: /fmu/out/timesync_status
     type: px4_msgs::msg::TimesyncStatus
