@@ -127,9 +127,9 @@ class PX4FlowPrecision(Node):
             
             # SOLUCIÓN DE DRIFT: NaN en la velocidad para que el PID tenga libertad
             # de acelerar e inclinar el dron agresivamente hacia los lados si hay viento o drift
-            setpoint.velocity = [float('nan'), float('nan'), float('nan')]
-            # setpoint.velocity = [0.0, 0.0, 0.0]
-            
+            # setpoint.velocity = [float('nan'), float('nan'), float('nan')]
+            setpoint.velocity = [0.0, 0.0, 0.0]
+                        
             self.hold_counter += 1
             pass_time = self.hold_counter * 0.1 # A 10Hz, 1 tick es 0.1s
             if pass_time >= self.hold_duration:
