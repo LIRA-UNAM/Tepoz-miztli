@@ -104,7 +104,7 @@ class PX4FlowPrecision(Node):
         # Valores por defecto para mantener todo bloqueado en piso
         setpoint.velocity = [float('nan'), float('nan'), float('nan')]
         setpoint.position = [float('nan'), float('nan'), float('nan')]
-        setpoint.acceleartion = [float('nan'), float('nan'), float('nan')]
+        setpoint.acceleration = [float('nan'), float('nan'), float('nan')]
         setpoint.jerk = [float('nan'), float('nan'), float('nan')]
         setpoint.yawspeed = float('nan')
 
