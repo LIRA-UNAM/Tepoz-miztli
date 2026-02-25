@@ -124,8 +124,10 @@ class PX4FlowPrecision(Node):
         elif self.state == "HOLD":
             # Mantenemos las coordenadas de origen real y la altura meta
             setpoint.position = [safe_x, safe_y, self.target_z]
-            setpoint.velocity = [float('nan'), float('nan'), float('nan')]
-            # setpoint.velocity = [0.0, 0.0, 0.0] #Se puede probar con float('nan')
+            #setpoint.velocity = [float('nan'), float('nan'), float('nan')]
+            setpoint.velocity = [0.0, 0.0, 0.0] #Se puede probar con float('nan')
+            self.get_logger().info("HOLD POSITION")
+
                         
             self.hold_counter += 1
             pass_time = self.hold_counter * 0.1 # A 10Hz, 1 tick es 0.1s
