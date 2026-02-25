@@ -32,7 +32,7 @@ class PX4FlowPrecision(Node):
         self.local_pos_sub = self.create_subscription(VehicleLocalPosition, '/fmu/out/vehicle_local_position', self.local_pos_cb, qos_profile)
         self.attitude_sub = self.create_subscription(VehicleAttitude, '/fmu/out/vehicle_attitude', self.attitude_cb, qos_profile)
 
-        self.timer = self.create_timer(0.1, self.timer_cb) # 10 Hz
+        self.timer = self.create_timer(0.05, self.timer_cb) # 10 Hz estaba a 0.1
         self.counter = 0
 
         # Posición actual (Añadimos X y Y)
@@ -124,8 +124,8 @@ class PX4FlowPrecision(Node):
         elif self.state == "HOLD":
             # Mantenemos las coordenadas de origen real y la altura meta
             setpoint.position = [safe_x, safe_y, self.target_z]
-            # setpoint.velocity = [float('nan'), float('nan'), float('nan')]
-            setpoint.velocity = [0.0, 0.0, 0.0] #Se puede probar con float('nan')
+            setpoint.velocity = [float('nan'), float('nan'), float('nan')]
+            # setpoint.velocity = [0.0, 0.0, 0.0] #Se puede probar con float('nan')
                         
             self.hold_counter += 1
             pass_time = self.hold_counter * 0.1 # A 10Hz, 1 tick es 0.1s
