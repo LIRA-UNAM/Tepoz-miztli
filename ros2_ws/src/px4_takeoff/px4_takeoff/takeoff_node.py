@@ -50,7 +50,7 @@ class PX4FlowPrecision(Node):
         
         # Parámetros solicitados
         self.target_z = -2.5 # 2.5 metros de altura
-        self.hold_duration = 10.0 # Segundos estables
+        self.hold_duration = 100.0 # Segundos estables
 
         # Fases
         self.state = "INIT"
@@ -79,7 +79,7 @@ class PX4FlowPrecision(Node):
         offboard = OffboardControlMode()
         offboard.timestamp = now
         offboard.position = True 
-        offboard.velocity = False #En False funciona mucho mejor
+        offboard.velocity = True #En False funciona mucho mejor
         offboard.acceleration = False
         self.offboard_pub.publish(offboard)
 
@@ -128,16 +128,16 @@ class PX4FlowPrecision(Node):
             # ---- Parámetros ----
             deadband = 0.05      # 5 cm de zona muerta
             max_speed = 0.3      # velocidad vertical máxima
-            gain = 0.8           # ganancia proporcional
+            gain = 0.6           # ganancia proporcional
 
             # Error en altura
-            error_z = self.target_z - self.current_z
+            error_z = self.current_z * self.target_z
 
             # ---- Control Z tipo P con banda muerta ----
             if abs(error_z) < deadband:
                 vz = 0.0
             else:
-                vz = gain * error_z
+                vz = -gain * error_z
 
                 # Saturación de velocidad
                 if vz > max_speed:
