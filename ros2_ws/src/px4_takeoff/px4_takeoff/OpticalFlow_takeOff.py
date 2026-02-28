@@ -73,7 +73,11 @@ class PX4FlowPrecision(Node):
     def timer_cb(self):
         now = self.get_clock().now().nanoseconds // 1000
 
-        # MODO OFFBOARD
+        # MODO OFFBOARDq = msg.q
+        siny_cosp = 2 * (q[0] * q[3] + q[1] * q[2])
+        cosy_cosp = 1 - 2 * (q[2] * q[2] + q[3] * q[3])
+        yaw = math.atan2(siny_cosp, cosy_cosp)
+        self.current_yaw = yaw
         offboard = OffboardControlMode()
         offboard.timestamp = now
         offboard.position = True 
