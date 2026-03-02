@@ -200,6 +200,7 @@ class OpticalFlowNode(Node):
 
                 rclpy.spin_once(self, timeout_sec=0)
                 self.get_clock().sleep_for(Duration(seconds=0.05))
+
 def main(args=None):
     rclpy.init(args=args)
     node = OpticalFlowNode()
