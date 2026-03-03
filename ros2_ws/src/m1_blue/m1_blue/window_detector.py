@@ -19,7 +19,6 @@ class RealSenseWindowDetector(Node):
 
         # ===== TOPICS =====
         self.rgb_topic = '/camera/camera/color/image_raw'
-        self.depth_topic = '/camera/camera/aligned_depth_to_color/image_raw'
         self.info_topic = '/camera/camera/color/camera_info'
         self.image_pub_topic = '/m1/blue/detections'
         self.coord_topic = '/m1/blue/coordinates'
@@ -48,10 +47,9 @@ class RealSenseWindowDetector(Node):
         )
 
         self.rgb_sub = message_filters.Subscriber(self, Image, self.rgb_topic)
-        self.depth_sub = message_filters.Subscriber(self, Image, self.depth_topic)
 
         self.ts = message_filters.ApproximateTimeSynchronizer(
-            [self.rgb_sub, self.depth_sub],
+            [self.rgb_sub],
             queue_size=10,
             slop=0.1
         )
@@ -62,8 +60,8 @@ class RealSenseWindowDetector(Node):
         self.image_pub = self.create_publisher(Image, self.image_pub_topic, 10)
         self.coord_pub = self.create_publisher(Point, self.coord_topic, 10)
 
-        # ===== YOLO TIMER (10 Hz) =====
-        self.timer = self.create_timer(0.1, self.yolo_process)
+        # ===== YOLO TIMER (Hz) =====
+        self.timer = self.create_timer(0.2, self.yolo_process)
 
         self.get_logger().info("Node started. Camera running...")
 
@@ -95,13 +93,8 @@ class RealSenseWindowDetector(Node):
                 rgb_msg, desired_encoding='bgr8'
             )
 
-            depth_frame = self.bridge.imgmsg_to_cv2(
-                depth_msg, desired_encoding='passthrough'
-            )
-
             # Guardamos último frame para YOLO
             self.last_frame = frame
-            self.last_depth = depth_frame
 
             annotated = frame.copy()
 
@@ -145,7 +138,7 @@ class RealSenseWindowDetector(Node):
         if self.last_frame is None:
             return
 
-        frame = self.last_frame.copy()
+        frame = cv2.resize(self.last_frame, (640, 480))
 
         results = self.model(frame, conf=0.5, verbose=False)
 
