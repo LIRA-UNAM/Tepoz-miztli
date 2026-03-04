@@ -56,7 +56,7 @@ class OpticalFlowNode(Node):
         self.local_pos_sub = self.create_subscription(
             VehicleLocalPosition, 
             '/fmu/out/vehicle_local_position',
-            self.local_pos_sub,
+            self.local_pos_cb,
             qos_profile
             )
 
