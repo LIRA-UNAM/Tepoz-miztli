@@ -89,19 +89,19 @@ class OpticalFlowNode(Node):
         #Fases
         self.state = State.INIT
 
-        def local_pos_cb(self, msg):
+    def local_pos_cb(self, msg):
             self.current_x = msg.x
             self.current_y = msg.y
             self.current_z = msg.z
         
-        def attitude_cb(self, msg):
+    def attitude_cb(self, msg):
             q = msg.q
             siny_cosp = 2 * (q[0] * q[3] + q[1] * q[2])
             cosy_cosp = 1 - 2 * (q[2] * q[2] + q[3] * q[3])
             yaw = math.atan2(siny_cosp, cosy_cosp)
             self.current_yaw = yaw
 
-        def send_cmd(self, command, param1=0.0, param2=0.0):
+    def send_cmd(self, command, param1=0.0, param2=0.0):
             msg = VehicleCommand()
             msg.timestamp = self.get_clock().now().nanoseconds // 1000
             msg.command = command
@@ -126,92 +126,92 @@ class OpticalFlowNode(Node):
         #     setpoint.yaw = self.locked_yaw if self.locked_yaw is not None else self.current_yaw
         #     setpoint.yawspeed = float('nan')
 
-        def spin(self):
-            self.get_logger().info("Initialized OpticalFlow Node")
+    def spin(self):
+        self.get_logger().info("Initialized OpticalFlow Node")
 
-            #Bucle princial de la maquina de estados
-            while rclpy.ok():
-                now = self.get_clock().now().nanoseconds // 1000
-                offboard = OffboardControlMode()
-                offboard.timestamp = now
+        #Bucle princial de la maquina de estados
+        while rclpy.ok():
+            now = self.get_clock().now().nanoseconds // 1000
+            offboard = OffboardControlMode()
+            offboard.timestamp = now
 
-                setpoint = TrajectorySetpoint()
-                setpoint.timestrap = now
+            setpoint = TrajectorySetpoint()
+            setpoint.timestrap = now
 
-                setpoint.yaw = self.locked_yaw if self.locked_yaw is not None else self.current_yaw
-                setpoint.yawspeed = float('nan')
+            setpoint.yaw = self.locked_yaw if self.locked_yaw is not None else self.current_yaw
+            setpoint.yawspeed = float('nan')
 
-                #Comienzo de estados
-                if self.state == State.INIT:
-                    offboard.position = True
-                    offboard.velocity = False
-                    setpoint.position = [self.current_x, self.current_y, self.current_z]
-                    setpoint.velocity = [0.0, 0.0, 0.0]
+            #Comienzo de estados
+            if self.state == State.INIT:
+                offboard.position = True
+                offboard.velocity = False
+                setpoint.position = [self.current_x, self.current_y, self.current_z]
+                setpoint.velocity = [0.0, 0.0, 0.0]
                 
-                    if self.counter > 20:
-                        self.locked_yaw = self.current_yaw
-                        self.send_cmd(VehicleCommand.VEHICLE_CMD_DO_SET_MODE, 1.0, 6.0)
-                        self.state = State.ARMING
+                if self.counter > 20:
+                    self.locked_yaw = self.current_yaw
+                    self.send_cmd(VehicleCommand.VEHICLE_CMD_DO_SET_MODE, 1.0, 6.0)
+                    self.state = State.ARMING
 
-                elif self.state == State.ARMING:
-                    offboard.position = True
-                    offboard.velocity = False
-                    setpoint.position = [self.current_x, self.current_y, self.current_z]
-                    setpoint.velocity = [0.0, 0.0, 0.0]
+            elif self.state == State.ARMING:
+                offboard.position = True
+                offboard.velocity = False
+                setpoint.position = [self.current_x, self.current_y, self.current_z]
+                setpoint.velocity = [0.0, 0.0, 0.0]
 
-                    if self.counter > 40:
-                        self.send_cmd(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0)
-                        self.get_logger().info("ARMED")
-                        self.state = State.TAKEOFF
+                if self.counter > 40:
+                    self.send_cmd(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0)
+                    self.get_logger().info("ARMED")
+                    self.state = State.TAKEOFF
 
-                elif self.state == State.TAKEOFF:
-                    offboard.position = False
-                    offboard.velocity = True
-                    setpoint.position = [float('nan'), float('nan'), float('nan')]
-                    setpoint.velocity = [0.0,0.0,-0.8]
+            elif self.state == State.TAKEOFF:
+                offboard.position = False
+                offboard.velocity = True
+                setpoint.position = [float('nan'), float('nan'), float('nan')]
+                setpoint.velocity = [0.0,0.0,-0.8]
 
-                    if abs(self.current_z - self.target_z) < 0.15:
-                        self.locked_x = self.current_x
-                        self.locked_y = self.current_y
-                        self.get_logger().info("HOLD")
-                        self.state = State.HOLD
+                if abs(self.current_z - self.target_z) < 0.15:
+                    self.locked_x = self.current_x
+                    self.locked_y = self.current_y
+                    self.get_logger().info("HOLD")
+                    self.state = State.HOLD
 
-                elif self.state == State.HOLD:
-                    offboard.position = True
-                    offboard.velocity = False
-                    setpoint.position = [self.locked_x, self.locked_y, self.target_z]
-                    setpoint.velocity = [0.0,0.0,0.0]
+            elif self.state == State.HOLD:
+                offboard.position = True
+                offboard.velocity = False
+                setpoint.position = [self.locked_x, self.locked_y, self.target_z]
+                setpoint.velocity = [0.0,0.0,0.0]
 
-                    self.hold_counter +=1
-                    pass_time = self.hold_counter * 0.05 #Se puede cambiar a la 0.1
+                self.hold_counter +=1
+                pass_time = self.hold_counter * 0.05 #Se puede cambiar a la 0.1
 
-                    if pass_time >= self.hold_duration:
-                        self.get_logger().info("LANDING")
-                        self.state = State.LAND
+                if pass_time >= self.hold_duration:
+                    self.get_logger().info("LANDING")
+                    self.state = State.LAND
 
-                elif self.state == State.LAND:
-                    offboard.position = True
-                    offboard.velocity = False
-                    setpoint.position = [self.locked_x, self.locked_y, float('nan')]
-                    setpoint.velocity = [0.0,0.0,0.4]
+            elif self.state == State.LAND:
+                offboard.position = True
+                offboard.velocity = False
+                setpoint.position = [self.locked_x, self.locked_y, float('nan')]
+                setpoint.velocity = [0.0,0.0,0.4]
 
-                    if self.current_z > -0.20:
-                        self.send_cmd(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 0.0)
-                        self.get_logger().info("LANDED")
-                        self.state = State.LANDED
+                if self.current_z > -0.20:
+                    self.send_cmd(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 0.0)
+                    self.get_logger().info("LANDED")
+                    self.state = State.LANDED
 
-                elif self.state == State.LANDED:
-                    offboard.position = True
-                    offboard.velocity = False
-                    setpoint.position = [self.locked_x, self.locked_y, self.current_z]
-                    setpoint.velocity = [0.0,0.0,0.0]
+            elif self.state == State.LANDED:
+                offboard.position = True
+                offboard.velocity = False
+                setpoint.position = [self.locked_x, self.locked_y, self.current_z]
+                setpoint.velocity = [0.0,0.0,0.0]
 
-                self.offboard_pub.publish(offboard)
-                self.trajectory_pub.publish(setpoint)
-                self.counter +=1
+            self.offboard_pub.publish(offboard)
+            self.trajectory_pub.publish(setpoint)
+            self.counter +=1
 
-                rclpy.spin_once(self, timeout_sec=0)
-                self.get_clock().sleep_for(Duration(seconds=0.05))
+            rclpy.spin_once(self, timeout_sec=0)
+            self.get_clock().sleep_for(Duration(seconds=0.05))
 
 def main(args=None):
     rclpy.init(args=args)
