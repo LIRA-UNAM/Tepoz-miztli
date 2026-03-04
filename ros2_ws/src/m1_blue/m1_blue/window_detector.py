@@ -2,13 +2,11 @@
 
 import rclpy
 from rclpy.node import Node
-import message_filters
-from sensor_msgs.msg import Image, CameraInfo
+from sensor_msgs.msg import Image
 from geometry_msgs.msg import Point
 from cv_bridge import CvBridge
 import cv2
 from ultralytics import YOLO
-import numpy as np
 import os
 
 
@@ -19,7 +17,6 @@ class RealSenseWindowDetector(Node):
 
         # ===== TOPICS =====
         self.rgb_topic = '/camera/camera/color/image_raw'
-        self.info_topic = '/camera/camera/color/camera_info'
         self.image_pub_topic = '/m1/blue/detections'
         self.coord_topic = '/m1/blue/coordinates'
 
@@ -32,73 +29,39 @@ class RealSenseWindowDetector(Node):
 
         # ===== VARIABLES =====
         self.bridge = CvBridge()
-        self.intrinsics = None
-
         self.last_frame = None
-        self.last_depth = None
         self.last_detection = None
 
-        # ===== SUBSCRIPTIONS =====
-        self.info_sub = self.create_subscription(
-            CameraInfo,
-            self.info_topic,
-            self.info_callback,
-            1
+        # ===== RGB SUBSCRIPTION (SIN DEPTH) =====
+        self.rgb_sub = self.create_subscription(
+            Image,
+            self.rgb_topic,
+            self.image_callback,
+            10
         )
-
-        self.rgb_sub = message_filters.Subscriber(self, Image, self.rgb_topic)
-
-        self.ts = message_filters.ApproximateTimeSynchronizer(
-            [self.rgb_sub],
-            queue_size=10,
-            slop=0.1
-        )
-
-        self.ts.registerCallback(self.sync_callback)
 
         # ===== PUBLISHERS =====
         self.image_pub = self.create_publisher(Image, self.image_pub_topic, 10)
         self.coord_pub = self.create_publisher(Point, self.coord_topic, 10)
 
-        # ===== YOLO TIMER (Hz) =====
+        # ===== YOLO TIMER =====
         self.timer = self.create_timer(0.2, self.yolo_process)
 
-        self.get_logger().info("Node started. Camera running...")
+        self.get_logger().info("RGB detector started.")
 
     # ==========================================================
-    # CAMERA INFO CALLBACK
+    # IMAGE CALLBACK (STREAM CONTINUO)
     # ==========================================================
-    def info_callback(self, msg):
-        if self.intrinsics is None:
-            self.fx = msg.k[0]
-            self.fy = msg.k[4]
-            self.cx = msg.k[2]
-            self.cy = msg.k[5]
-            self.intrinsics = msg
-
-            self.get_logger().info(
-                f"Calibration received: fx={self.fx:.2f}, fy={self.fy:.2f}"
-            )
-
-    # ==========================================================
-    # IMAGE CALLBACK (FLUID STREAM)
-    # ==========================================================
-    def sync_callback(self, rgb_msg, depth_msg):
-
-        if self.intrinsics is None:
-            return
+    def image_callback(self, msg):
 
         try:
             frame = self.bridge.imgmsg_to_cv2(
-                rgb_msg, desired_encoding='bgr8'
+                msg, desired_encoding='bgr8'
             )
 
-            # Guardamos último frame para YOLO
             self.last_frame = frame
-
             annotated = frame.copy()
 
-            # Dibujar última detección si existe
             if self.last_detection is not None:
                 x1, y1, x2, y2, distance = self.last_detection
 
@@ -120,18 +83,17 @@ class RealSenseWindowDetector(Node):
                     2
                 )
 
-            # PUBLICAR SIEMPRE (fluido tipo webcam)
             img_msg = self.bridge.cv2_to_imgmsg(
                 annotated, encoding='bgr8'
             )
-            img_msg.header = rgb_msg.header
+            img_msg.header = msg.header
             self.image_pub.publish(img_msg)
 
         except Exception as e:
             self.get_logger().error(f"Stream error: {e}")
 
     # ==========================================================
-    # YOLO PROCESS (BACKGROUND)
+    # YOLO PROCESS (NO MODIFICADO)
     # ==========================================================
     def yolo_process(self):
 
@@ -155,6 +117,14 @@ class RealSenseWindowDetector(Node):
 
             # Guardamos detección
             self.last_detection = (x1, y1, x2, y2, distance_px)
+
+            # Publicar centro como coordenada 2D
+            center = Point()
+            center.x = float((x1 + x2) / 2)
+            center.y = float((y1 + y2) / 2)
+            center.z = float(distance_px)
+
+            self.coord_pub.publish(center)
 
         else:
             # Si no detecta nada, eliminar detección
