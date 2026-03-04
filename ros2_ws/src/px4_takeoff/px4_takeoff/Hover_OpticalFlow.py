@@ -112,7 +112,7 @@ class OpticalFlowNode(Node):
             msg.source_system = 1
             msg.source_component = 1
             msg.from_external = True
-            msg.cmd_pub.publish(msg)
+            self.cmd_pub.publish(msg)
 
 
         # def timer_cb(self):
