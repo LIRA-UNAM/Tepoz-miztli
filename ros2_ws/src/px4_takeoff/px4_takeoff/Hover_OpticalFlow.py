@@ -84,7 +84,7 @@ class OpticalFlowNode(Node):
         #Timer y contadores
         # self.timer = self.create_timer(0.1, self.timer_cb) # 10 Hz estaba a 0.1
         self.counter = 0
-        self.hold_duration = 0
+        self.hold_counter = 0
 
         #Fases
         self.state = State.INIT
