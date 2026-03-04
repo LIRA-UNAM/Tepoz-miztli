@@ -136,7 +136,7 @@ class OpticalFlowNode(Node):
             offboard.timestamp = now
 
             setpoint = TrajectorySetpoint()
-            setpoint.timestrap = now
+            setpoint.timestamp = now
 
             setpoint.yaw = self.locked_yaw if self.locked_yaw is not None else self.current_yaw
             setpoint.yawspeed = float('nan')
