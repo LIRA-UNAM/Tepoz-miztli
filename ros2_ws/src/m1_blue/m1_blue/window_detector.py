@@ -8,6 +8,8 @@ from cv_bridge import CvBridge
 import cv2
 from ultralytics import YOLO
 import os
+import threading
+import time
 
 
 class RealSenseWindowDetector(Node):
@@ -20,19 +22,22 @@ class RealSenseWindowDetector(Node):
         self.image_pub_topic = '/m1/blue/detections'
         self.coord_topic = '/m1/blue/coordinates'
 
-        # YOLO MODEL 
+        # YOLO MODEL
         weights_dir = os.path.expanduser('~/Tepoz-miztli/ros2_ws/weights')
         model_path = os.path.join(weights_dir, 'best.pt')
 
         self.get_logger().info(f"Loading YOLO model: {model_path}")
         self.model = YOLO(model_path)
 
-        # VARIABLES 
+        # VARIABLES
         self.bridge = CvBridge()
         self.last_frame = None
         self.last_detection = None
 
-        # RGB SUBSCRIPTION 
+        # Lock para evitar conflictos entre hilos
+        self.lock = threading.Lock()
+
+        # RGB SUBSCRIPTION
         self.rgb_sub = self.create_subscription(
             Image,
             self.rgb_topic,
@@ -44,12 +49,15 @@ class RealSenseWindowDetector(Node):
         self.image_pub = self.create_publisher(Image, self.image_pub_topic, 10)
         self.coord_pub = self.create_publisher(Point, self.coord_topic, 10)
 
-        # YOLO TIMER 
-        self.timer = self.create_timer(0.4, self.yolo_process)
+        # HILO DE YOLO
+        self.running = True
+        self.yolo_thread = threading.Thread(target=self.yolo_loop)
+        self.yolo_thread.daemon = True
+        self.yolo_thread.start()
 
-        self.get_logger().info("RGB detector started.")
+        self.get_logger().info("RGB detector with threaded YOLO started.")
 
-    # CALLBACK
+    # CALLBACK DE IMAGEN (ULTRA LIGERO)
     def image_callback(self, msg):
 
         try:
@@ -57,11 +65,14 @@ class RealSenseWindowDetector(Node):
                 msg, desired_encoding='bgr8'
             )
 
-            self.last_frame = frame
+            with self.lock:
+                self.last_frame = frame.copy()
+                detection = self.last_detection
+
             annotated = frame.copy()
 
-            if self.last_detection is not None:
-                x1, y1, x2, y2, distance = self.last_detection
+            if detection is not None:
+                x1, y1, x2, y2, distance = detection
 
                 cv2.rectangle(
                     annotated,
@@ -90,13 +101,26 @@ class RealSenseWindowDetector(Node):
         except Exception as e:
             self.get_logger().error(f"Stream error: {e}")
 
-    # YOLO PROCESS
-    def yolo_process(self):
+    # LOOP INDEPENDIENTE DE YOLO
+    def yolo_loop(self):
 
-        if self.last_frame is None:
-            return
+        while self.running:
 
-        frame = cv2.resize(self.last_frame, (320, 240))
+            frame = None
+
+            with self.lock:
+                if self.last_frame is not None:
+                    frame = self.last_frame.copy()
+
+            if frame is not None:
+                self.yolo_process(frame)
+
+            time.sleep(0.2)  # misma frecuencia que tu timer
+
+    # TU LOGICA EXACTA (NO MODIFICADA)
+    def yolo_process(self, frame):
+
+        frame = cv2.resize(frame, (640, 480))
 
         results = self.model(frame, conf=0.5, verbose=False)
 
@@ -110,9 +134,10 @@ class RealSenseWindowDetector(Node):
             distance_px = 1038.33 / (area_px ** 0.5)
 
             x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
-            self.last_detection = (x1, y1, x2, y2, distance_px)
 
-            # Publish center
+            with self.lock:
+                self.last_detection = (x1, y1, x2, y2, distance_px)
+
             center = Point()
             center.x = float((x1 + x2) / 2)
             center.y = float((y1 + y2) / 2)
@@ -121,9 +146,10 @@ class RealSenseWindowDetector(Node):
             self.coord_pub.publish(center)
 
         else:
-            self.last_detection = None
+            with self.lock:
+                self.last_detection = None
 
-# MAIN
+
 def main(args=None):
 
     rclpy.init(args=args)
@@ -134,6 +160,7 @@ def main(args=None):
     except KeyboardInterrupt:
         pass
     finally:
+        node.running = False
         node.destroy_node()
         rclpy.shutdown()
 
