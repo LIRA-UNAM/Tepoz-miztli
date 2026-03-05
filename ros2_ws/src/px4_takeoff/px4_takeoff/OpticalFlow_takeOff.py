@@ -24,15 +24,20 @@ class PX4FlowPrecision(Node):
         )
 
         # Publishers
-        self.offboard_pub = self.create_publisher(OffboardControlMode, '/fmu/in/offboard_control_mode', qos_profile)
-        self.trajectory_pub = self.create_publisher(TrajectorySetpoint, '/fmu/in/trajectory_setpoint', qos_profile)
-        self.cmd_pub = self.create_publisher(VehicleCommand, '/fmu/in/vehicle_command', qos_profile)
+        self.offboard_pub = self.create_publisher(
+            OffboardControlMode, '/fmu/in/offboard_control_mode', qos_profile)
+        self.trajectory_pub = self.create_publisher(
+            TrajectorySetpoint, '/fmu/in/trajectory_setpoint', qos_profile)
+        self.cmd_pub = self.create_publisher(
+            VehicleCommand, '/fmu/in/vehicle_command', qos_profile)
 
         # Subscribers
-        self.local_pos_sub = self.create_subscription(VehicleLocalPosition, '/fmu/out/vehicle_local_position', self.local_pos_cb, qos_profile)
-        self.attitude_sub = self.create_subscription(VehicleAttitude, '/fmu/out/vehicle_attitude', self.attitude_cb, qos_profile)
+        self.local_pos_sub = self.create_subscription(
+            VehicleLocalPosition, '/fmu/out/vehicle_local_position', self.local_pos_cb, qos_profile)
+        self.attitude_sub = self.create_subscription(
+            VehicleAttitude, '/fmu/out/vehicle_attitude', self.attitude_cb, qos_profile)
 
-        self.timer = self.create_timer(0.05, self.timer_cb) # 10 Hz estaba a 0.1
+        self.timer = self.create_timer(0.1, self.timer_cb) # 10 Hz
         self.counter = 0
 
         # Posición actual (Añadimos X y Y)
@@ -48,7 +53,7 @@ class PX4FlowPrecision(Node):
         
         # Parámetros solicitados
         self.target_z = -2.5 # 2.5 metros de altura
-        self.hold_duration = 100.0 # Segundos estables
+        self.hold_duration = 10.0 # Segundos estables
 
         # Fases
         self.state = "INIT"
@@ -73,11 +78,7 @@ class PX4FlowPrecision(Node):
     def timer_cb(self):
         now = self.get_clock().now().nanoseconds // 1000
 
-        # MODO OFFBOARDq = msg.q
-        siny_cosp = 2 * (q[0] * q[3] + q[1] * q[2])
-        cosy_cosp = 1 - 2 * (q[2] * q[2] + q[3] * q[3])
-        yaw = math.atan2(siny_cosp, cosy_cosp)
-        self.current_yaw = yaw
+        # MODO OFFBOARD
         offboard = OffboardControlMode()
         offboard.timestamp = now
         offboard.position = True 
@@ -101,8 +102,11 @@ class PX4FlowPrecision(Node):
         setpoint.yaw = self.locked_yaw if self.locked_yaw is not None else 0.0
         
         # Valores por defecto para mantener todo bloqueado en piso
-        setpoint.velocity = [0.0, 0.0, float('nan')]
+        setpoint.velocity = [float('nan'), float('nan'), float('nan')]
         setpoint.position = [float('nan'), float('nan'), float('nan')]
+        setpoint.acceleration = [float('nan'), float('nan'), float('nan')]
+        setpoint.jerk = [float('nan'), float('nan'), float('nan')]
+        setpoint.yawspeed = float('nan')
 
         # MÁQUINA DE ESTADOS
         if self.state == "INIT":
@@ -128,10 +132,8 @@ class PX4FlowPrecision(Node):
         elif self.state == "HOLD":
             # Mantenemos las coordenadas de origen real y la altura meta
             setpoint.position = [safe_x, safe_y, self.target_z]
-            #setpoint.velocity = [float('nan'), float('nan'), float('nan')]
-            setpoint.velocity = [0.0, 0.0, 0.0] #Se puede probar con float('nan')
-            self.get_logger().info("HOLD POSITION")
-
+            setpoint.velocity = [float('nan'), float('nan'), float('nan')]
+            # setpoint.velocity = [0.0, 0.0, 0.0] #Se puede probar con float('nan')
                         
             self.hold_counter += 1
             pass_time = self.hold_counter * 0.1 # A 10Hz, 1 tick es 0.1s
