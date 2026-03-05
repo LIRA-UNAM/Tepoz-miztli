@@ -36,7 +36,7 @@ class OpticalFlowNode(Node):
         #Publishers
         self.offboard_pub = self.create_publisher(
             OffboardControlMode, 
-            '/fmu/in/offboard_control_node',
+            '/fmu/in/offboard_control_mode',
             qos_profile
             )
         
