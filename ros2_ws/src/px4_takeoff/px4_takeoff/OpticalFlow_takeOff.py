@@ -52,7 +52,7 @@ class PX4FlowPrecision(Node):
         self.locked_yaw = None
         
         # Parámetros solicitados
-        self.target_z = -2.5 # 2.5 metros de altura
+        self.target_z = -1.5 # 1.5 metros de altura
         self.hold_duration = 10.0 # Segundos estables
 
         # Fases
