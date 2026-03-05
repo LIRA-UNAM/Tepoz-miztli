@@ -122,7 +122,7 @@ class RealSenseWindowDetector(Node):
 
         frame = cv2.resize(frame, (640, 480))
 
-        results = self.model(frame, conf=0.5, verbose=False)
+        results = self.model(frame, conf=0.5, verbose=False, device=0)
 
         if results and len(results[0].boxes) > 0:
 
