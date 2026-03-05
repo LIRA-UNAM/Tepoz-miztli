@@ -8,8 +8,6 @@ from cv_bridge import CvBridge
 import cv2
 from ultralytics import YOLO
 import os
-import threading
-import time
 
 
 class RealSenseWindowDetector(Node):
@@ -17,27 +15,24 @@ class RealSenseWindowDetector(Node):
     def __init__(self):
         super().__init__('m1_blue_realsense_detector')
 
-        # TOPICS
+        # ===== TOPICS =====
         self.rgb_topic = '/camera/camera/color/image_raw'
         self.image_pub_topic = '/m1/blue/detections'
         self.coord_topic = '/m1/blue/coordinates'
 
-        # YOLO MODEL
+        # ===== LOAD YOLO MODEL =====
         weights_dir = os.path.expanduser('~/Tepoz-miztli/ros2_ws/weights')
         model_path = os.path.join(weights_dir, 'best.pt')
 
         self.get_logger().info(f"Loading YOLO model: {model_path}")
         self.model = YOLO(model_path)
 
-        # VARIABLES
+        # ===== VARIABLES =====
         self.bridge = CvBridge()
         self.last_frame = None
         self.last_detection = None
 
-        # Lock para evitar conflictos entre hilos
-        self.lock = threading.Lock()
-
-        # RGB SUBSCRIPTION
+        # ===== RGB SUBSCRIPTION (SIN DEPTH) =====
         self.rgb_sub = self.create_subscription(
             Image,
             self.rgb_topic,
@@ -45,19 +40,18 @@ class RealSenseWindowDetector(Node):
             10
         )
 
-        # PUBLISHERS
+        # ===== PUBLISHERS =====
         self.image_pub = self.create_publisher(Image, self.image_pub_topic, 10)
         self.coord_pub = self.create_publisher(Point, self.coord_topic, 10)
 
-        # HILO DE YOLO
-        self.running = True
-        self.yolo_thread = threading.Thread(target=self.yolo_loop)
-        self.yolo_thread.daemon = True
-        self.yolo_thread.start()
+        # ===== YOLO TIMER =====
+        self.timer = self.create_timer(0.2, self.yolo_process)
 
-        self.get_logger().info("RGB detector with threaded YOLO started.")
+        self.get_logger().info("RGB detector started.")
 
-    # CALLBACK DE IMAGEN (ULTRA LIGERO)
+    # ==========================================================
+    # IMAGE CALLBACK (STREAM CONTINUO)
+    # ==========================================================
     def image_callback(self, msg):
 
         try:
@@ -65,14 +59,11 @@ class RealSenseWindowDetector(Node):
                 msg, desired_encoding='bgr8'
             )
 
-            with self.lock:
-                self.last_frame = frame.copy()
-                detection = self.last_detection
-
+            self.last_frame = frame
             annotated = frame.copy()
 
-            if detection is not None:
-                x1, y1, x2, y2, distance = detection
+            if self.last_detection is not None:
+                x1, y1, x2, y2, distance = self.last_detection
 
                 cv2.rectangle(
                     annotated,
@@ -101,26 +92,15 @@ class RealSenseWindowDetector(Node):
         except Exception as e:
             self.get_logger().error(f"Stream error: {e}")
 
-    # LOOP INDEPENDIENTE DE YOLO
-    def yolo_loop(self):
+    # ==========================================================
+    # YOLO PROCESS (NO MODIFICADO)
+    # ==========================================================
+    def yolo_process(self):
 
-        while self.running:
+        if self.last_frame is None:
+            return
 
-            frame = None
-
-            with self.lock:
-                if self.last_frame is not None:
-                    frame = self.last_frame.copy()
-
-            if frame is not None:
-                self.yolo_process(frame)
-
-            time.sleep(0.2)  # misma frecuencia que tu timer
-
-    # TU LOGICA EXACTA (NO MODIFICADA)
-    def yolo_process(self, frame):
-
-        frame = cv2.resize(frame, (640, 480))
+        frame = cv2.resize(self.last_frame, (640, 480))
 
         results = self.model(frame, conf=0.5, verbose=False, device=0)
 
@@ -135,9 +115,10 @@ class RealSenseWindowDetector(Node):
 
             x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
 
-            with self.lock:
-                self.last_detection = (x1, y1, x2, y2, distance_px)
+            # Guardamos detección
+            self.last_detection = (x1, y1, x2, y2, distance_px)
 
+            # Publicar centro como coordenada 2D
             center = Point()
             center.x = float((x1 + x2) / 2)
             center.y = float((y1 + y2) / 2)
@@ -146,10 +127,13 @@ class RealSenseWindowDetector(Node):
             self.coord_pub.publish(center)
 
         else:
-            with self.lock:
-                self.last_detection = None
+            # Si no detecta nada, eliminar detección
+            self.last_detection = None
 
 
+# ==========================================================
+# MAIN
+# ==========================================================
 def main(args=None):
 
     rclpy.init(args=args)
@@ -160,7 +144,6 @@ def main(args=None):
     except KeyboardInterrupt:
         pass
     finally:
-        node.running = False
         node.destroy_node()
         rclpy.shutdown()
 
