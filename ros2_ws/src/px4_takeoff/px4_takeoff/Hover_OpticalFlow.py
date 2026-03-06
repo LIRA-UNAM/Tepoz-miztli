@@ -10,7 +10,8 @@ from px4_msgs.msg import(
     TrajectorySetpoint,
     VehicleCommand,
     VehicleLocalPosition,
-    VehicleAttitude
+    VehicleAttitude,
+    VehicleOpticalFlow
 )
 
 class State(Enum):
@@ -66,6 +67,12 @@ class OpticalFlowNode(Node):
             self.attitude_cb,
             qos_profile
             )
+        self.flow_sub = self.create_subscription(
+             VehicleOpticalFlow,
+             '/fmu/out/vehicle_optical_flow',
+             self.flow_cb,
+             qos_profile
+        )
         
         #Position current
         self.current_x = 0.0
@@ -93,6 +100,9 @@ class OpticalFlowNode(Node):
             self.current_x = msg.x
             self.current_y = msg.y
             self.current_z = msg.z
+
+    def flow_cb(self, msg):
+         self.get_logger().info(f"Calidad: {msg.quality} | Distancia: {msg.distance_m:.2f} | X_rad: {msg.pixel_flow_x_integral:.3f} | Y_rad: {msg.pixel_flow_y_integral:.3f}")
         
     def attitude_cb(self, msg):
             q = msg.q
