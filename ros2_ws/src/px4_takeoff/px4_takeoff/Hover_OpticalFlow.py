@@ -26,45 +26,45 @@ class OpticalFlowNode(Node):
     def __init__(self):
         super().__init__('px4_flow_precision')
 
-        # qos_profile = QoSProfile(
-        #     reliability=ReliabilityPolicy.BEST_EFFORT,
-        #     durability=DurabilityPolicy.TRANSIENT_LOCAL,
-        #     history=HistoryPolicy.KEEP_LAST,
-        #     depth=1
-        # )
+        qos_profile = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1
+        )
 
         #Publishers
         self.offboard_pub = self.create_publisher(
             OffboardControlMode, 
-            '/fmu/in/offboard_control_mode'
-            # qos_profile
+            '/fmu/in/offboard_control_mode',
+            qos_profile
             )
         
         self.trajectory_pub = self.create_publisher(
             TrajectorySetpoint,
-            '/fmu/in/trajectory_setpoint'
-            # qos_profile
+            '/fmu/in/trajectory_setpoint',
+            qos_profile
             )
         
         self.cmd_pub = self.create_publisher(
             VehicleCommand,
-            '/fmu/in/vehicle_command'
-            # qos_profile
+            '/fmu/in/vehicle_command',
+            qos_profile
             )
         
         #Subscribers
         self.local_pos_sub = self.create_subscription(
             VehicleLocalPosition, 
             '/fmu/out/vehicle_local_position',
-            self.local_pos_cb
-            # qos_profile
+            self.local_pos_cb,
+            qos_profile
             )
 
         self.attitude_sub = self.create_subscription(
             VehicleAttitude,
             '/fmu/out/vehicle_attitude',
-            self.attitude_cb
-            # qos_profile
+            self.attitude_cb,
+            qos_profile
             )
         
         #Position current
