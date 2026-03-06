@@ -29,7 +29,7 @@ class OpticalFlowNode(Node):
 
         qos_profile = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
-            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            durability=DurabilityPolicy.VOLATILE,
             history=HistoryPolicy.KEEP_LAST,
             depth=1
         )
@@ -102,7 +102,7 @@ class OpticalFlowNode(Node):
             self.current_z = msg.z
 
     def flow_cb(self, msg):
-         self.get_logger().info(f"Calidad: {msg.quality} | Distancia: {msg.distance_m:.2f} | X_rad: {msg.pixel_flow_x_integral:.3f} | Y_rad: {msg.pixel_flow_y_integral:.3f}")
+         self.get_logger().info(f"Calidad: {msg.quality} | Distancia: {msg.distance_m:.2f} | X_rad: {msg.pixel_flow[0]:.3f} | Y_rad: {msg.pixel_flow[1]:.3f}")
         
     def attitude_cb(self, msg):
             q = msg.q
