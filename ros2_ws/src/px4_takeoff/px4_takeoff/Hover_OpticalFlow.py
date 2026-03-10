@@ -197,7 +197,12 @@ class OpticalFlowNode(Node):
             elif self.state == State.HOLD:
                 offboard.position = True
                 offboard.velocity = True
-                setpoint.position = [self.locked_x, self.locked_y, self.locked_z]
+
+                safe_x = float(self.locked_x) if self.locked_x is not None else 0.0
+                safe_y = float(self.locked_y) if self.locked_y is not None else 0.0
+                safe_z = float(self.locked_z) if self.locked_z is not None else float(self.target_z)
+                
+                setpoint.position = [safe_x, safe_y, safe_z]
                 setpoint.velocity = [0.0,0.0,0.0]
 
                 self.hold_counter +=1
@@ -210,7 +215,11 @@ class OpticalFlowNode(Node):
             elif self.state == State.LAND:
                 offboard.position = True
                 offboard.velocity = True
-                setpoint.position = [self.locked_x, self.locked_y, float('nan')]
+
+                safe_x = float(self.locked_x) if self.locked_x is not None else 0.0
+                safe_y = float(self.locked_y) if self.locked_y is not None else 0.0
+
+                setpoint.position = [safe_x, safe_y, float('nan')]
                 setpoint.velocity = [0.0,0.0,0.4]
 
                 if self.current_z > -0.25:
