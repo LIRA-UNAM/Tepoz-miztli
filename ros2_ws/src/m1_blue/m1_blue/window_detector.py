@@ -2,17 +2,12 @@
 
 import rclpy
 from rclpy.node import Node
-
 from sensor_msgs.msg import Image
 from geometry_msgs.msg import Point
-
-from cv_bridge import CvBridge
-
 import cv2
-import os
-import torch
-
 from ultralytics import YOLO
+import os
+import numpy as np
 
 
 class RealSenseWindowDetector(Node):
@@ -21,29 +16,22 @@ class RealSenseWindowDetector(Node):
         super().__init__('m1_blue_realsense_detector')
 
         # TOPICS
-
         self.rgb_topic = '/camera/camera/color/image_raw'
         self.image_pub_topic = '/m1/blue/detections'
         self.coord_topic = '/m1/blue/coordinates'
 
-        # LOAD MODEL
-
+        # YOLO MODEL
         weights_dir = os.path.expanduser('~/Tepoz-miztli/ros2_ws/weights')
         model_path = os.path.join(weights_dir, 'best.pt')
 
         self.get_logger().info(f"Loading YOLO model: {model_path}")
-
         self.model = YOLO(model_path)
-        self.model.to("cuda")
-
-        torch.set_num_threads(1)
 
         # VARIABLES
+        self.last_frame = None
+        self.last_detection = None
 
-        self.bridge = CvBridge()
-
-        # SUBSCRIBER
-
+        # RGB SUBSCRIPTION
         self.rgb_sub = self.create_subscription(
             Image,
             self.rgb_topic,
@@ -52,71 +40,54 @@ class RealSenseWindowDetector(Node):
         )
 
         # PUBLISHERS
+        self.image_pub = self.create_publisher(Image, self.image_pub_topic, 10)
+        self.coord_pub = self.create_publisher(Point, self.coord_topic, 10)
 
-        self.image_pub = self.create_publisher(
-            Image,
-            self.image_pub_topic,
-            10
-        )
-
-        self.coord_pub = self.create_publisher(
-            Point,
-            self.coord_topic,
-            10
-        )
+        # YOLO TIMER
+        self.timer = self.create_timer(0.4, self.yolo_process)
 
         self.get_logger().info("RGB detector started.")
 
-        #callback
+    # ---------- ROS Image -> OpenCV ----------
+    def rosimg_to_numpy(self, msg):
 
+        img = np.frombuffer(msg.data, dtype=np.uint8)
+
+        img = img.reshape(msg.height, msg.width, -1)
+
+        if msg.encoding == "rgb8":
+            img = img[:, :, ::-1]
+
+        return img
+
+    # ---------- OpenCV -> ROS Image ----------
+    def numpy_to_rosimg(self, img, header):
+
+        msg = Image()
+
+        msg.header = header
+        msg.height = img.shape[0]
+        msg.width = img.shape[1]
+        msg.encoding = "bgr8"
+        msg.is_bigendian = False
+        msg.step = img.shape[1] * 3
+        msg.data = img.tobytes()
+
+        return msg
+
+    # CALLBACK
     def image_callback(self, msg):
 
         try:
 
-            # Convertir imagen ROS → OpenCV
-            frame = self.bridge.imgmsg_to_cv2(msg, "passthrough")
-            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-            frame_resized = cv2.resize(frame, (640, 480))
+            frame = self.rosimg_to_numpy(msg)
 
-            # INFERENCIA YOLO (GPU)
+            self.last_frame = frame
+            annotated = frame.copy()
 
-            results = self.model(
-                frame_resized,
-                conf=0.5,
-                device=0,
-                verbose=False
-            )
+            if self.last_detection is not None:
 
-            detection = None
-
-            if results and results[0].boxes is not None and len(results[0].boxes) > 0:
-
-                box = results[0].boxes[0]
-
-                x_center, y_center, w, h = box.xywh[0].cpu().numpy()
-
-                area_px = w * h
-                distance_px = 1038.33 / (area_px ** 0.5)
-
-                x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
-
-                detection = (x1, y1, x2, y2, distance_px)
-
-                center = Point()
-
-                center.x = float((x1 + x2) / 2)
-                center.y = float((y1 + y2) / 2)
-                center.z = float(distance_px)
-
-                self.coord_pub.publish(center)
-
-            # DIBUJAR DETECCIÓN
-
-            annotated = frame_resized.copy()
-
-            if detection is not None:
-
-                x1, y1, x2, y2, distance = detection
+                x1, y1, x2, y2, distance = self.last_detection
 
                 cv2.rectangle(
                     annotated,
@@ -136,23 +107,50 @@ class RealSenseWindowDetector(Node):
                     2
                 )
 
-            # PUBLICAR IMAGEN
-
-            img_msg = self.bridge.cv2_to_imgmsg(
-                annotated,
-                encoding='bgr8'
-            )
-
-            img_msg.header = msg.header
+            img_msg = self.numpy_to_rosimg(annotated, msg.header)
 
             self.image_pub.publish(img_msg)
 
         except Exception as e:
+            self.get_logger().error(f"Stream error: {e}")
 
-            self.get_logger().error(f"Processing error: {e}")
+    # YOLO PROCESS
+    def yolo_process(self):
+
+        if self.last_frame is None:
+            return
+
+        frame = cv2.resize(self.last_frame, (320, 240))
+
+        results = self.model(frame, conf=0.5, verbose=False)
+
+        if results and len(results[0].boxes) > 0:
+
+            box = results[0].boxes[0]
+
+            x_center, y_center, w, h = box.xywh[0].cpu().numpy()
+
+            area_px = w * h
+            distance_px = 1038.33 / (area_px ** 0.5)
+
+            x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
+
+            self.last_detection = (x1, y1, x2, y2, distance_px)
+
+            # Publish center
+            center = Point()
+
+            center.x = float((x1 + x2) / 2)
+            center.y = float((y1 + y2) / 2)
+            center.z = float(distance_px)
+
+            self.coord_pub.publish(center)
+
+        else:
+            self.last_detection = None
+
 
 # MAIN
-
 def main(args=None):
 
     rclpy.init(args=args)
@@ -166,9 +164,6 @@ def main(args=None):
         pass
 
     finally:
+
         node.destroy_node()
         rclpy.shutdown()
-
-
-if __name__ == '__main__':
-    main()
