@@ -149,6 +149,9 @@ class OpticalFlowNode(Node):
             setpoint = TrajectorySetpoint()
             setpoint.timestamp = now
 
+            setpoint.acceleration = [float('nan'), float('nan'), float('nan')]
+            setpoint.jerk = [float('nan'), float('nan'), float('nan')]
+
             setpoint.yaw = self.locked_yaw if self.locked_yaw is not None else self.current_yaw
             setpoint.yawspeed = float('nan')
 
