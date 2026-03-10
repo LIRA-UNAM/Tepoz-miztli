@@ -79,6 +79,7 @@ class OpticalFlowNode(Node):
         self.current_x = 0.0
         self.current_y = 0.0
         self.current_z = 0.0
+        self.current_distance = 0.0
         self.current_yaw = 0.0
 
         #Position locked
@@ -103,6 +104,7 @@ class OpticalFlowNode(Node):
             self.current_z = msg.z
 
     def flow_cb(self, msg):
+         self.current_distance = msg.current_distance
          self.get_logger().info(f"Calidad: {msg.signal_quality} | Distancia: {msg.current_distance:.2f}")
         
     def attitude_cb(self, msg):
@@ -184,7 +186,7 @@ class OpticalFlowNode(Node):
                 setpoint.position = [float('nan'), float('nan'), float('nan')]
                 setpoint.velocity = [0.0,0.0,-0.8]
 
-                if abs(self.current_z - self.target_z) < 0.15:
+                if self.current_distance >= abs(self.target_z) - 0.15:
                     self.locked_x = self.current_x
                     self.locked_y = self.current_y
                     self.get_logger().info("HOLD")
@@ -224,8 +226,8 @@ class OpticalFlowNode(Node):
             self.trajectory_pub.publish(setpoint)
             self.counter +=1
 
-            rclpy.spin_once(self, timeout_sec=0)
-            self.get_clock().sleep_for(Duration(seconds=0.05))
+            rclpy.spin_once(self, timeout_sec=0.05)
+            # self.get_clock().sleep_for(Duration(seconds=0.05))
 
 def main(args=None):
     rclpy.init(args=args)
