@@ -85,6 +85,7 @@ class OpticalFlowNode(Node):
         #Position locked
         self.locked_x = None
         self.locked_y = None
+        self.locked_z = None
         self.locked_yaw = None
 
         #Parameters
@@ -189,13 +190,14 @@ class OpticalFlowNode(Node):
                 if self.current_distance >= abs(self.target_z) - 0.15:
                     self.locked_x = self.current_x
                     self.locked_y = self.current_y
+                    self.locked_y = self.current_z
                     self.get_logger().info("HOLD")
                     self.state = State.HOLD
 
             elif self.state == State.HOLD:
                 offboard.position = True
-                offboard.velocity = False
-                setpoint.position = [self.locked_x, self.locked_y, self.target_z]
+                offboard.velocity = True
+                setpoint.position = [self.locked_x, self.locked_y, self.locked_z]
                 setpoint.velocity = [0.0,0.0,0.0]
 
                 self.hold_counter +=1
@@ -207,11 +209,11 @@ class OpticalFlowNode(Node):
 
             elif self.state == State.LAND:
                 offboard.position = True
-                offboard.velocity = False
+                offboard.velocity = True
                 setpoint.position = [self.locked_x, self.locked_y, float('nan')]
                 setpoint.velocity = [0.0,0.0,0.4]
 
-                if self.current_z > -0.20:
+                if self.current_z > -0.25:
                     self.send_cmd(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 0.0)
                     self.get_logger().info("LANDED")
                     self.state = State.LANDED
