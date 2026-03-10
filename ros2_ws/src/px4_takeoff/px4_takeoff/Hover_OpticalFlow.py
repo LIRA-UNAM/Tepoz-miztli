@@ -11,7 +11,8 @@ from px4_msgs.msg import(
     VehicleCommand,
     VehicleLocalPosition,
     VehicleAttitude,
-    VehicleOpticalFlow
+    VehicleOpticalFlow,
+    DistanceSensor
 )
 
 class State(Enum):
@@ -68,8 +69,8 @@ class OpticalFlowNode(Node):
             qos_profile
             )
         self.flow_sub = self.create_subscription(
-             VehicleOpticalFlow,
-             '/fmu/out/vehicle_optical_flow',
+             DistanceSensor,
+             '/fmu/out/distance_sensor',
              self.flow_cb,
              qos_profile
         )
@@ -102,7 +103,7 @@ class OpticalFlowNode(Node):
             self.current_z = msg.z
 
     def flow_cb(self, msg):
-         self.get_logger().info(f"Calidad: {msg.quality} | Distancia: {msg.distance_m:.2f} | X_rad: {msg.pixel_flow[0]:.3f} | Y_rad: {msg.pixel_flow[1]:.3f}")
+         self.get_logger().info(f"Calidad: {msg.signal_quality} | Distancia: {msg.current_distance:.2f}")
         
     def attitude_cb(self, msg):
             q = msg.q

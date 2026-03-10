@@ -9,7 +9,8 @@ from px4_msgs.msg import(
     VehicleCommand,
     VehicleLocalPosition,
     VehicleStatus,
-    VehicleAttitude
+    VehicleAttitude,
+    DistanceSensor
 )
 
 class PX4FlowPrecision(Node):
@@ -36,6 +37,12 @@ class PX4FlowPrecision(Node):
             VehicleLocalPosition, '/fmu/out/vehicle_local_position', self.local_pos_cb, qos_profile)
         self.attitude_sub = self.create_subscription(
             VehicleAttitude, '/fmu/out/vehicle_attitude', self.attitude_cb, qos_profile)
+        self.flow_sub = self.create_subscription(
+             DistanceSensor,
+             '/fmu/out/distance_sensor',
+             self.flow_cb,
+             qos_profile
+        )
 
         self.timer = self.create_timer(0.1, self.timer_cb) # 10 Hz
         self.counter = 0
@@ -52,7 +59,7 @@ class PX4FlowPrecision(Node):
         self.locked_yaw = None
         
         # Parámetros solicitados
-        self.target_z = -1.5 # 1.5 metros de altura
+        self.target_z = -1.2 # 1.5 metros de altura
         self.hold_duration = 3.0 # Segundos estables
 
         # Fases
@@ -74,6 +81,9 @@ class PX4FlowPrecision(Node):
         cosy_cosp = 1 - 2 * (q[2] * q[2] + q[3] * q[3])
         yaw = math.atan2(siny_cosp, cosy_cosp)
         self.current_yaw = yaw
+
+    def flow_cb(self, msg):
+         self.get_logger().info(f"Calidad: {msg.signal_quality} | Distancia: {msg.current_distance:.2f}")
 
     def timer_cb(self):
         now = self.get_clock().now().nanoseconds // 1000
