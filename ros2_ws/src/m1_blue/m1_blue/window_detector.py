@@ -4,10 +4,13 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
 from geometry_msgs.msg import Point
+
 import cv2
-from ultralytics import YOLO
 import os
 import numpy as np
+import torch
+
+from ultralytics import YOLO
 
 
 class RealSenseWindowDetector(Node):
@@ -25,7 +28,14 @@ class RealSenseWindowDetector(Node):
         model_path = os.path.join(weights_dir, 'best.pt')
 
         self.get_logger().info(f"Loading YOLO model: {model_path}")
+
         self.model = YOLO(model_path)
+
+        # mover modelo a GPU
+        self.model.to("cuda")
+
+        # optimización cudnn
+        torch.backends.cudnn.benchmark = True
 
         # VARIABLES
         self.last_frame = None
@@ -46,7 +56,7 @@ class RealSenseWindowDetector(Node):
         # YOLO TIMER
         self.timer = self.create_timer(0.4, self.yolo_process)
 
-        self.get_logger().info("RGB detector started.")
+        self.get_logger().info("RGB detector started (GPU mode).")
 
     # ---------- ROS Image -> OpenCV ----------
     def rosimg_to_numpy(self, msg):
@@ -75,7 +85,7 @@ class RealSenseWindowDetector(Node):
 
         return msg
 
-    # CALLBACK
+    # ---------- IMAGE CALLBACK ----------
     def image_callback(self, msg):
 
         try:
@@ -114,7 +124,7 @@ class RealSenseWindowDetector(Node):
         except Exception as e:
             self.get_logger().error(f"Stream error: {e}")
 
-    # YOLO PROCESS
+    # ---------- YOLO PROCESS ----------
     def yolo_process(self):
 
         if self.last_frame is None:
@@ -122,7 +132,27 @@ class RealSenseWindowDetector(Node):
 
         frame = cv2.resize(self.last_frame, (320, 240))
 
-        results = self.model(frame, conf=0.5, verbose=False)
+        # BGR → RGB
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+        # numpy → tensor
+        img = torch.from_numpy(frame).float()
+
+        # HWC → CHW
+        img = img.permute(2, 0, 1)
+
+        # normalizar
+        img = img / 255.0
+
+        # batch
+        img = img.unsqueeze(0)
+
+        # GPU
+        img = img.cuda()
+
+        with torch.no_grad():
+
+            results = self.model(img, conf=0.5, verbose=False)
 
         if results and len(results[0].boxes) > 0:
 
@@ -137,7 +167,6 @@ class RealSenseWindowDetector(Node):
 
             self.last_detection = (x1, y1, x2, y2, distance_px)
 
-            # Publish center
             center = Point()
 
             center.x = float((x1 + x2) / 2)
@@ -150,7 +179,7 @@ class RealSenseWindowDetector(Node):
             self.last_detection = None
 
 
-# MAIN
+# ---------- MAIN ----------
 def main(args=None):
 
     rclpy.init(args=args)
@@ -167,3 +196,7 @@ def main(args=None):
 
         node.destroy_node()
         rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
