@@ -67,6 +67,8 @@ class RealSenseWindowDetector(Node):
 
         self.get_logger().info("RGB detector started.")
 
+        #callback
+
     def image_callback(self, msg):
 
         try:
