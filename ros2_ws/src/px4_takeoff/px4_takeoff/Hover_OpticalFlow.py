@@ -79,11 +79,13 @@ class OpticalFlowNode(Node):
         self.current_x = 0.0
         self.current_y = 0.0
         self.current_z = 0.0
+        self.current_distance = 0.0
         self.current_yaw = 0.0
 
         #Position locked
         self.locked_x = None
         self.locked_y = None
+        self.locked_z = None
         self.locked_yaw = None
 
         #Parameters
@@ -103,6 +105,7 @@ class OpticalFlowNode(Node):
             self.current_z = msg.z
 
     def flow_cb(self, msg):
+         self.current_distance = msg.current_distance
          self.get_logger().info(f"Calidad: {msg.signal_quality} | Distancia: {msg.current_distance:.2f}")
         
     def attitude_cb(self, msg):
@@ -184,16 +187,22 @@ class OpticalFlowNode(Node):
                 setpoint.position = [float('nan'), float('nan'), float('nan')]
                 setpoint.velocity = [0.0,0.0,-0.8]
 
-                if abs(self.current_z - self.target_z) < 0.15:
+                if self.current_distance >= abs(self.target_z) - 0.15:
                     self.locked_x = self.current_x
                     self.locked_y = self.current_y
+                    self.locked_y = self.current_z
                     self.get_logger().info("HOLD")
                     self.state = State.HOLD
 
             elif self.state == State.HOLD:
                 offboard.position = True
-                offboard.velocity = False
-                setpoint.position = [self.locked_x, self.locked_y, self.target_z]
+                offboard.velocity = True
+
+                safe_x = float(self.locked_x) if self.locked_x is not None else 0.0
+                safe_y = float(self.locked_y) if self.locked_y is not None else 0.0
+                safe_z = float(self.locked_z) if self.locked_z is not None else float(self.target_z)
+                
+                setpoint.position = [safe_x, safe_y, safe_z]
                 setpoint.velocity = [0.0,0.0,0.0]
 
                 self.hold_counter +=1
@@ -205,11 +214,15 @@ class OpticalFlowNode(Node):
 
             elif self.state == State.LAND:
                 offboard.position = True
-                offboard.velocity = False
-                setpoint.position = [self.locked_x, self.locked_y, float('nan')]
+                offboard.velocity = True
+
+                safe_x = float(self.locked_x) if self.locked_x is not None else 0.0
+                safe_y = float(self.locked_y) if self.locked_y is not None else 0.0
+
+                setpoint.position = [safe_x, safe_y, float('nan')]
                 setpoint.velocity = [0.0,0.0,0.4]
 
-                if self.current_z > -0.20:
+                if self.current_z > -0.25:
                     self.send_cmd(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 0.0)
                     self.get_logger().info("LANDED")
                     self.state = State.LANDED
@@ -224,8 +237,8 @@ class OpticalFlowNode(Node):
             self.trajectory_pub.publish(setpoint)
             self.counter +=1
 
-            rclpy.spin_once(self, timeout_sec=0)
-            self.get_clock().sleep_for(Duration(seconds=0.05))
+            rclpy.spin_once(self, timeout_sec=0.05)
+            # self.get_clock().sleep_for(Duration(seconds=0.05))
 
 def main(args=None):
     rclpy.init(args=args)
