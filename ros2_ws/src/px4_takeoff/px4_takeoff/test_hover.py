@@ -66,6 +66,7 @@ class PX4FlowPrecision(Node):
 
     def flow_cb(self, msg):
          # Opcional: monitoreo de calidad del sensor
+         self.get_logger().info(f"Calidad: {msg.signal_quality} | Distancia: {msg.current_distance:.2f}")
          if msg.signal_quality < 50:
              self.get_logger().warn(f"Baja calidad de Flow: {msg.signal_quality}")
 
