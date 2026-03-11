@@ -3,7 +3,7 @@ import rclpy
 from rclpy.node import Node
 
 import cv2
-import numpy as np
+import math
 
 from cv_bridge import CvBridge
 from sensor_msgs.msg import Image, CameraInfo
@@ -53,15 +53,18 @@ class ArucoDetector(Node):
         self.image_pub = self.create_publisher(Image, 'aruco/image_annotated', 10)
 
         self.get_logger().info("=== ARUCO DETECTOR READY ===")
-        self.get_logger().info(f"Image topic: {img_topic}")
-        self.get_logger().info(f"Camera info topic: {caminfo_topic}")
-        self.get_logger().info(f"Marker size: {self.marker_size} m")
 
     def camera_info_callback(self, msg: CameraInfo):
 
         if self.K is None:
-            self.K = np.array(msg.k).reshape(3, 3)
-            self.D = np.array(msg.d)
+            # matriz intrínseca
+            self.K = [
+                [msg.k[0], msg.k[1], msg.k[2]],
+                [msg.k[3], msg.k[4], msg.k[5]],
+                [msg.k[6], msg.k[7], msg.k[8]]
+            ]
+
+            self.D = list(msg.d)
 
             self.get_logger().info("Camera intrinsics received.")
 
@@ -98,8 +101,8 @@ class ArucoDetector(Node):
 
             for i in range(len(ids)):
 
-                rvec = rvecs[i].reshape(3)
-                tvec = tvecs[i].reshape(3)
+                rvec = rvecs[i][0]
+                tvec = tvecs[i][0]
 
                 marker_id = int(ids[i][0])
 
@@ -127,7 +130,11 @@ class ArucoDetector(Node):
 
                 poses_msg.poses.append(pose)
 
-                dist = float(np.linalg.norm(tvec))
+                dist = math.sqrt(
+                    tvec[0]*tvec[0] +
+                    tvec[1]*tvec[1] +
+                    tvec[2]*tvec[2]
+                )
 
                 self.get_logger().info(
                     f"ID {marker_id} | Distance: {dist:.3f} m"
@@ -143,14 +150,14 @@ class ArucoDetector(Node):
     @staticmethod
     def rodrigues_to_quaternion(rvec):
 
-        R, _ = cv2.Rodrigues(np.asarray(rvec))
+        R, _ = cv2.Rodrigues(rvec)
 
-        tr = R[0, 0] + R[1, 1] + R[2, 2]
+        tr = R[0][0] + R[1][1] + R[2][2]
 
-        qw = np.sqrt(max(0.0, 1.0 + tr)) / 2.0
-        qx = (R[2, 1] - R[1, 2]) / (4.0 * qw + 1e-12)
-        qy = (R[0, 2] - R[2, 0]) / (4.0 * qw + 1e-12)
-        qz = (R[1, 0] - R[0, 1]) / (4.0 * qw + 1e-12)
+        qw = math.sqrt(max(0.0, 1.0 + tr)) / 2.0
+        qx = (R[2][1] - R[1][2]) / (4.0 * qw + 1e-12)
+        qy = (R[0][2] - R[2][0]) / (4.0 * qw + 1e-12)
+        qz = (R[1][0] - R[0][1]) / (4.0 * qw + 1e-12)
 
         return float(qx), float(qy), float(qz), float(qw)
 
@@ -166,7 +173,3 @@ def main(args=None):
     node.destroy_node()
 
     rclpy.shutdown()
-
-
-if __name__ == '__main__':
-    main()
