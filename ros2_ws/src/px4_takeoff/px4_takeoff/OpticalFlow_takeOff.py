@@ -8,7 +8,6 @@ from px4_msgs.msg import(
     TrajectorySetpoint,
     VehicleCommand,
     VehicleLocalPosition,
-    VehicleStatus,
     VehicleAttitude,
     DistanceSensor
 )
@@ -26,17 +25,29 @@ class PX4FlowPrecision(Node):
 
         # Publishers
         self.offboard_pub = self.create_publisher(
-            OffboardControlMode, '/fmu/in/offboard_control_mode', qos_profile)
+            OffboardControlMode, 
+            '/fmu/in/offboard_control_mode', 
+            qos_profile)
         self.trajectory_pub = self.create_publisher(
-            TrajectorySetpoint, '/fmu/in/trajectory_setpoint', qos_profile)
+            TrajectorySetpoint, 
+            '/fmu/in/trajectory_setpoint', 
+            qos_profile)
         self.cmd_pub = self.create_publisher(
-            VehicleCommand, '/fmu/in/vehicle_command', qos_profile)
+            VehicleCommand, 
+            '/fmu/in/vehicle_command', 
+            qos_profile)
 
         # Subscribers
         self.local_pos_sub = self.create_subscription(
-            VehicleLocalPosition, '/fmu/out/vehicle_local_position', self.local_pos_cb, qos_profile)
+            VehicleLocalPosition, 
+            '/fmu/out/vehicle_local_position', 
+            self.local_pos_cb, 
+            qos_profile)
         self.attitude_sub = self.create_subscription(
-            VehicleAttitude, '/fmu/out/vehicle_attitude', self.attitude_cb, qos_profile)
+            VehicleAttitude, 
+            '/fmu/out/vehicle_attitude', 
+            self.attitude_cb, 
+            qos_profile)
         self.flow_sub = self.create_subscription(
              DistanceSensor,
              '/fmu/out/distance_sensor',
