@@ -138,12 +138,13 @@ class RealSenseWindowDetector(Node):
 
             box = results[0].boxes[0]
 
-            w, h = box.xywh[0].cpu().numpy()
+            x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
+
+            w = x2 - x1
+            h = y2 - y1
 
             area_px = w * h
             distance_px = 1038.33 / (area_px ** 0.5)
-
-            x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
 
             self.last_detection = (x1, y1, x2, y2, distance_px)
 
