@@ -130,35 +130,15 @@ class RealSenseWindowDetector(Node):
         if self.last_frame is None:
             return
 
-        frame = cv2.resize(self.last_frame, (320, 240))
-
-        # BGR → RGB
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-        # numpy → tensor
-        img = torch.from_numpy(frame).float()
-
-        # HWC → CHW
-        img = img.permute(2, 0, 1)
-
-        # normalizar
-        img = img / 255.0
-
-        # batch
-        img = img.unsqueeze(0)
-
-        # GPU
-        img = img.cuda()
-
         with torch.no_grad():
 
-            results = self.model(img, conf=0.5, verbose=False)
+            results = self.model(self.last_frame, conf=0.5, verbose=False)
 
         if results and len(results[0].boxes) > 0:
 
             box = results[0].boxes[0]
 
-            x_center, y_center, w, h = box.xywh[0].cpu().numpy()
+            w, h = box.xywh[0].cpu().numpy()
 
             area_px = w * h
             distance_px = 1038.33 / (area_px ** 0.5)
