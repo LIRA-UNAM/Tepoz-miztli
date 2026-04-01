@@ -140,7 +140,7 @@ class RealSenseWindowDetector(Node):
 
             x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
 
-            class_id = int(box.xls[0])
+            class_id = int(box.cls[0])
             class_name = self.model.names[class_id]
 
             w = x2 - x1
