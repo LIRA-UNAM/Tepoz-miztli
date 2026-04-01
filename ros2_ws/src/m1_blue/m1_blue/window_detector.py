@@ -140,19 +140,37 @@ class RealSenseWindowDetector(Node):
 
             x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
 
+            class_id = int(box.xls[0])
+            class_name = self.model.names[class_id]
+
             w = x2 - x1
             h = y2 - y1
-
             area_px = w * h
-            distance_px = 1038.33 / (area_px ** 0.5)
 
-            self.last_detection = (x1, y1, x2, y2, distance_px)
+            if class_name == "Blue_gates":
+
+                distance = 1038.33 / (area_px ** 0.5)
+                distance_text = f"{distance: .2f}m"
+
+            elif class_name == "Green_gates":
+                distance = -1.0
+                distance_text = "wait"
+
+            else: 
+                distance = -1.0
+                distance_text = "x"
+            
+            self.last_detection = (x1, y1, x2, y2, distance)
+
+            self.get_logger().info(
+                f"Detected: {class_name} | Distance: {distance_text}"
+            )
 
             center = Point()
 
             center.x = float((x1 + x2) / 2)
             center.y = float((y1 + y2) / 2)
-            center.z = float(distance_px)
+            center.z = float(distance)
 
             self.coord_pub.publish(center)
 
