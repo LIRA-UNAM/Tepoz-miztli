@@ -84,7 +84,12 @@ class PX4FlowPrecision(Node):
         self.locked_z = 0.0
         self.locked_yaw = 0.0
         
-        self.target_z = -1.2 # Altura objetivo (NED, negativo es hacia arriba)
+        self.target_z = -1.2  # Altura objetivo (NED, negativo es hacia arriba)
+
+        # --- NUEVO: Control de hover y aterrizaje ---
+        self.flight_phase = "HOVER"   # Fases: "HOVER" → "LAND" → "LANDED"
+        self.hover_ticks = 0          # Ticks acumulados en hover
+        self.HOVER_DURATION = 5.0     # Segundos de hover antes de aterrizar
 
     # ===================== CALLBACKS =====================
 
@@ -104,7 +109,6 @@ class PX4FlowPrecision(Node):
         self.current_yaw = math.atan2(siny_cosp, cosy_cosp)
 
     def flow_cb(self, msg):
-        # Reducir frecuencia de logs para mantener limpia la terminal (1 vez por segundo)
         if self.counter % 20 == 0:
             self.get_logger().info(
                 f"Calidad Flow: {msg.signal_quality} | Distancia Z: {msg.current_distance:.2f}"
@@ -126,12 +130,11 @@ class PX4FlowPrecision(Node):
         # 2. CONFIGURACIÓN BASE DEL SETPOINT
         setpoint = TrajectorySetpoint()
         setpoint.timestamp = now
-        
-        # Delegar velocidades a los límites internos de PX4
         setpoint.velocity = [float('nan'), float('nan'), float('nan')]
         setpoint.acceleration = [float('nan'), float('nan'), float('nan')]
         setpoint.jerk = [float('nan'), float('nan'), float('nan')]
         setpoint.yawspeed = float('nan')
+        setpoint.yaw = self.locked_yaw
 
         # 3. ACTUALIZAR POSICIÓN DE ORIGEN MIENTRAS ESTÉ DESARMADO
         if self.arming_state != VehicleStatus.ARMING_STATE_ARMED:
@@ -139,29 +142,70 @@ class PX4FlowPrecision(Node):
             self.locked_y = self.current_y
             self.locked_z = self.current_z
             self.locked_yaw = self.current_yaw
+            # Resetear fase al desarmar (permite reutilizar el nodo)
+            self.flight_phase = "HOVER"
+            self.hover_ticks = 0
 
-        # 4. ASIGNACIÓN DE OBJETIVOS SEGÚN EL ESTADO
-        if (self.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD and
-            self.arming_state == VehicleStatus.ARMING_STATE_ARMED):
-            # En Vuelo: Mantener X, Y, Yaw y subir a target_z
-            setpoint.position = [self.locked_x, self.locked_y, self.target_z]
-            setpoint.yaw = self.locked_yaw
+        # 4. LÓGICA DE VUELO
+        in_flight = (
+            self.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD and
+            self.arming_state == VehicleStatus.ARMING_STATE_ARMED
+        )
+
+        if in_flight:
+            if self.flight_phase == "HOVER":
+                # Mantener posición y altura objetivo
+                setpoint.position = [self.locked_x, self.locked_y, self.target_z]
+
+                # Contar tiempo solo cuando está cerca de la altura objetivo
+                if abs(self.current_z - self.target_z) < 0.15:
+                    self.hover_ticks += 1
+                    elapsed = self.hover_ticks * 0.05  # 20 Hz → 0.05s por tick
+                    
+                    # Log cada segundo
+                    if self.hover_ticks % 20 == 0:
+                        remaining = self.HOVER_DURATION - elapsed
+                        self.get_logger().info(
+                            f"HOVER estable — Aterrizando en {remaining:.1f}s"
+                        )
+
+                    if elapsed >= self.HOVER_DURATION:
+                        self.flight_phase = "LAND"
+                        self.get_logger().info("INICIANDO ATERRIZAJE")
+
+            elif self.flight_phase == "LAND":
+                # Bajar sobre las mismas coordenadas bloqueadas
+                setpoint.position = [self.locked_x, self.locked_y, 0.0]
+                setpoint.velocity = [0.0, 0.0, 0.4]  # Descenso suave controlado
+
+                # Detectar cuando está cerca del suelo
+                if self.current_z > -0.15:
+                    self.flight_phase = "LANDED"
+                    self.send_cmd(400, param1=0.0)  # Desarmar motores
+                    self.get_logger().info("ATERRIZAJE COMPLETADO — Motores desarmados")
+
+            elif self.flight_phase == "LANDED":
+                # No hacer nada, mantener último setpoint en suelo
+                setpoint.position = [self.locked_x, self.locked_y, self.locked_z]
+
         else:
-            # En Tierra: Enviar posición actual para cumplir con la validación de PX4
+            # En tierra: enviar posición actual para cumplir validación de PX4
             setpoint.position = [self.locked_x, self.locked_y, self.locked_z]
-            setpoint.yaw = self.locked_yaw
 
         # 5. PUBLICAR SETPOINT
         self.trajectory_pub.publish(setpoint)
 
         # 6. MÁQUINA DE COMANDOS (a 20Hz: 20 ticks = 1 segundo)
-        if self.counter == 20: 
+        if self.counter == 20:
             self.send_cmd(176, param1=1.0, param2=6.0)
             self.get_logger().info("Solicitando modo OFFBOARD...")
 
-        if self.counter == 40: 
+        if self.counter == 40:
             self.send_cmd(400, param1=1.0)
-            self.get_logger().info(f"ARMANDO MOTORES... Subiendo a {abs(self.target_z)}m y manteniendo Hover")
+            self.get_logger().info(
+                f"ARMANDO MOTORES... Subiendo a {abs(self.target_z)}m — "
+                f"Hover {self.HOVER_DURATION:.0f}s → Aterrizaje automático"
+            )
 
         self.counter += 1
 
