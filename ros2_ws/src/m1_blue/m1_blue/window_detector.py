@@ -163,7 +163,7 @@ class RealSenseWindowDetector(Node):
             self.last_detection = (x1, y1, x2, y2, distance)
 
             self.get_logger().info(
-                f"Detected: {class_name} | Distance: {distance_text}"
+                f"Detected: {class_name} | Distance: {distance_text} | Area_px: {area_px}" 
             )
 
             center = Point()

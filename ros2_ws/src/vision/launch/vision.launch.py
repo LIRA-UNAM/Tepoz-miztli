@@ -5,15 +5,15 @@ def generate_launch_description():
 
     yolo_node = Node(
         package='m1_blue',
-        executable='window_detector',
-        name='blue_gate_detector',
+        executable='detector',
+        name='object',
         output='screen'
     )
 
     aruco_node = Node(
         package='aruco_detector',
         executable='detect_aruco_node',
-        name='aruco_detector',
+        name='aruco',
         output='screen',
         parameters=[{
             'image_topic': '/camera/camera/color/image_raw',

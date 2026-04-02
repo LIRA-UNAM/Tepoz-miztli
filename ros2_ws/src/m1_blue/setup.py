@@ -24,7 +24,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'window_detector = m1_blue.window_detector:main',
+            'detector = m1_blue.window_detector:main',
         ],
     },
 )
