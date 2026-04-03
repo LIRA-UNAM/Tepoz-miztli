@@ -76,6 +76,8 @@ class PX4FlowPrecision(Node):
         # Fases
         self.state = "INIT"
         self.hold_start_time = None   # Marca de tiempo real al entrar en HOLD
+        self.stable_ticks = 0         # Ticks consecutivos dentro del umbral de altura
+        self.stable_ticks_needed = 10 # ~1s a 10Hz dentro del umbral para confirmar altura
 
     # ===================== CALLBACKS =====================
 
@@ -153,17 +155,33 @@ class PX4FlowPrecision(Node):
             # Velocidad vertical se reduce gradualmente al acercarse a la altura
             if error_z > 0.4:
                 vz = -0.8   # Subida rápida (lejos del objetivo)
-            elif error_z > 0.15:
+            elif error_z > 0.20:
                 vz = -0.3   # Subida lenta (cerca del objetivo)
             else:
-                vz = 0.0    # Ya llegó, dejar que PX4 tome el control
+                vz = 0.0    # Cerca, dejar que PX4 estabilice
 
             setpoint.position = [safe_x, safe_y, self.target_z]
             setpoint.velocity = [float('nan'), float('nan'), vz]
 
-            if error_z < 0.15:
+            # Umbral ampliado a 0.4m: cuenta ticks consecutivos dentro del rango
+            if error_z < 0.40:
+                self.stable_ticks += 1
+            else:
+                self.stable_ticks = 0  # Resetear si se sale del rango
+
+            if self.counter % 10 == 0:
+                self.get_logger().info(
+                    f"TAKEOFF | z={self.current_z:.2f} target={self.target_z:.2f} "
+                    f"err={error_z:.2f} stable={self.stable_ticks}/{self.stable_ticks_needed}"
+                )
+
+            # Transición solo cuando lleva 1s estable dentro del rango
+            if self.stable_ticks >= self.stable_ticks_needed:
                 self.state = "HOLD"
-                self.get_logger().info("HOLD POSITION - Manteniendo altura y posición")
+                self.get_logger().info(
+                    f"HOLD POSITION - Estable en z={self.current_z:.2f} m "
+                    f"(target={self.target_z:.2f} m, error={error_z:.2f} m)"
+                )
 
         elif self.state == "HOLD":
             setpoint.position = [safe_x, safe_y, self.target_z]
