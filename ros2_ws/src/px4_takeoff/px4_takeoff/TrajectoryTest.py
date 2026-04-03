@@ -17,54 +17,70 @@ class PX4TrajectoryNode(Node):
     def __init__(self):
         super().__init__('px4_trajectory')
 
-        qos_profile = QoSProfile(
+        # QoS para Publishers → PX4 espera TRANSIENT_LOCAL en /fmu/in/...
+        pub_qos = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
             history=HistoryPolicy.KEEP_LAST,
             depth=1
         )
 
+        # QoS para Subscribers → PX4 publica /fmu/out/... con VOLATILE
+        sub_qos = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            durability=DurabilityPolicy.VOLATILE,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1
+        )
+
         # Publishers
         self.offboard_pub = self.create_publisher(
-            OffboardControlMode, '/fmu/in/offboard_control_mode', qos_profile)
+            OffboardControlMode, '/fmu/in/offboard_control_mode', pub_qos)
         self.trajectory_pub = self.create_publisher(
-            TrajectorySetpoint, '/fmu/in/trajectory_setpoint', qos_profile)
+            TrajectorySetpoint, '/fmu/in/trajectory_setpoint', pub_qos)
         self.cmd_pub = self.create_publisher(
-            VehicleCommand, '/fmu/in/vehicle_command', qos_profile)
+            VehicleCommand, '/fmu/in/vehicle_command', pub_qos)
 
-        # Subscribers
+        # Subscribers (usan sub_qos con VOLATILE)
         self.local_pos_sub = self.create_subscription(
             VehicleLocalPosition, '/fmu/out/vehicle_local_position',
-            self.local_pos_cb, qos_profile)
+            self.local_pos_cb, sub_qos)
         self.attitude_sub = self.create_subscription(
             VehicleAttitude, '/fmu/out/vehicle_attitude',
-            self.attitude_cb, qos_profile)
+            self.attitude_cb, sub_qos)
         self.flow_sub = self.create_subscription(
             DistanceSensor, '/fmu/out/distance_sensor',
-            self.flow_cb, qos_profile)
+            self.flow_cb, sub_qos)
 
         self.timer = self.create_timer(0.05, self.timer_cb)  # 20 Hz
         self.counter = 0
 
-        # Posición actual
-        self.current_x = 0.0
-        self.current_y = 0.0
-        self.current_z = 0.0
+        # Posición actual (de VehicleLocalPosition)
+        self.current_x   = 0.0
+        self.current_y   = 0.0
+        self.current_z   = 0.0
         self.current_yaw = 0.0
 
-        # Posición bloqueada al armar (origen del vuelo)
+        # Altura medida por el sensor de distancia
+        self.current_distance = 0.0
+
+        # Posición bloqueada al armar
         self.locked_x   = None
         self.locked_y   = None
         self.locked_yaw = None
 
         # Parámetros de vuelo
-        self.target_z  = -1.5   # Altura objetivo en NED (negativo = arriba)
-        self.point_x   = 2.0    # Metros a avanzar en X desde el origen
+        self.target_altitude = 1.5   # Altura objetivo en metros (positivo, desde el suelo)
+        self.target_z        = -1.5  # Mismo valor en NED para el setpoint de posición
+        self.point_x         = 2.0   # Metros a avanzar en X
 
         # Target X calculado una sola vez al entrar a FORWARD
         self.target_x = None
 
-        self.state = "INIT"
+        # Control de estados
+        self.state               = "INIT"
+        self.stable_ticks        = 0
+        self.stable_ticks_needed = 20  # 1 segundo a 20 Hz
 
     # ===================== CALLBACKS =====================
 
@@ -80,10 +96,12 @@ class PX4TrajectoryNode(Node):
         self.current_yaw = math.atan2(siny_cosp, cosy_cosp)
 
     def flow_cb(self, msg):
-        if self.counter % 20 == 0:  # 1 vez por segundo a 20Hz
+        self.current_distance = msg.current_distance
+
+        if self.counter % 20 == 0:  # 1 vez por segundo a 20 Hz
             self.get_logger().info(
                 f"Calidad: {msg.signal_quality} | "
-                f"Distancia: {msg.current_distance:.2f} m"
+                f"Distancia: {self.current_distance:.2f} m"
             )
 
     # ===================== LOOP PRINCIPAL =====================
@@ -91,17 +109,17 @@ class PX4TrajectoryNode(Node):
     def timer_cb(self):
         now = self.get_clock().now().nanoseconds // 1000
 
-        # Modo Offboard (siempre publicar antes del arme)
+        # Modo Offboard (publicar siempre)
         offboard = OffboardControlMode()
         offboard.timestamp    = now
         offboard.position     = True
         offboard.velocity     = False
         offboard.acceleration = False
         offboard.attitude     = False
-        offboard.body_rate    = False  # ← debe ser False en modo posición
+        offboard.body_rate    = False
         self.offboard_pub.publish(offboard)
 
-        # Setpoint base con NaN (PX4 ignora lo no especificado)
+        # Setpoint base con NaN
         setpoint = TrajectorySetpoint()
         setpoint.timestamp    = now
         setpoint.position     = [float('nan'), float('nan'), float('nan')]
@@ -110,7 +128,7 @@ class PX4TrajectoryNode(Node):
         setpoint.jerk         = [float('nan'), float('nan'), float('nan')]
         setpoint.yawspeed     = float('nan')
 
-        # Bloquear posición de origen mientras el dron está en tierra
+        # Bloquear posición de origen mientras está en tierra
         if self.state in ("INIT", "ARMING"):
             self.locked_x   = self.current_x
             self.locked_y   = self.current_y
@@ -123,27 +141,42 @@ class PX4TrajectoryNode(Node):
         # ===================== MÁQUINA DE ESTADOS =====================
 
         if self.state == "INIT":
-            # Publicar setpoints un tiempo antes de pedir OFFBOARD
-            if self.counter > 20:
-                self.send_cmd(176, param1=1.0, param2=6.0)  # Modo OFFBOARD
+            if self.counter > 40:  # ~2s a 20Hz antes de pedir OFFBOARD
+                self.send_cmd(176, param1=1.0, param2=6.0)
                 self.state = "ARMING"
 
         elif self.state == "ARMING":
-            if self.counter > 30:
-                self.send_cmd(400, param1=1.0)  # Armar motores
+            if self.counter > 60:  # ~3s a 20Hz antes de armar
+                self.send_cmd(400, param1=1.0)
                 self.get_logger().info(
-                    f"ARMED | Ascendiendo a {abs(self.target_z):.1f} m"
+                    f"ARMED | Ascendiendo a {self.target_altitude:.1f} m"
                 )
                 self.state = "TAKEOFF"
 
         elif self.state == "TAKEOFF":
             setpoint.position = [safe_x, safe_y, self.target_z]
 
-            if abs(self.current_z - self.target_z) < 0.15:
-                # Calcular destino X una sola vez
+            # Usar sensor de distancia como fuente de altura
+            error_alt = abs(self.current_distance - self.target_altitude)
+
+            if error_alt < 0.40:
+                self.stable_ticks += 1
+            else:
+                self.stable_ticks = 0
+
+            if self.counter % 20 == 0:
+                self.get_logger().info(
+                    f"TAKEOFF | dist={self.current_distance:.2f} m "
+                    f"target={self.target_altitude:.2f} m "
+                    f"err={error_alt:.2f} m "
+                    f"stable={self.stable_ticks}/{self.stable_ticks_needed}"
+                )
+
+            if self.stable_ticks >= self.stable_ticks_needed:
+                # Calcular destino X una sola vez al entrar a FORWARD
                 self.target_x = safe_x + self.point_x
                 self.get_logger().info(
-                    f"Altura alcanzada: {self.current_z:.2f} m | "
+                    f"Altura estable en {self.current_distance:.2f} m | "
                     f"Avanzando {self.point_x} m en X → target_x={self.target_x:.2f}"
                 )
                 self.state = "FORWARD"
@@ -152,6 +185,12 @@ class PX4TrajectoryNode(Node):
             # Mantener altura mientras avanza en X
             setpoint.position = [self.target_x, safe_y, self.target_z]
 
+            if self.counter % 20 == 0:
+                self.get_logger().info(
+                    f"FORWARD | x={self.current_x:.2f} → target={self.target_x:.2f} "
+                    f"err={abs(self.current_x - self.target_x):.2f} m"
+                )
+
             if abs(self.current_x - self.target_x) < 0.15:
                 self.get_logger().info(
                     f"Destino X alcanzado: {self.current_x:.2f} m | Aterrizando"
@@ -159,17 +198,16 @@ class PX4TrajectoryNode(Node):
                 self.state = "LANDING"
 
         elif self.state == "LANDING":
-            # Aterrizar en el punto X donde llegó
             setpoint.position = [self.target_x, safe_y, 0.0]
             setpoint.velocity = [float('nan'), float('nan'), 0.4]  # Descenso suave
 
-            if self.current_z > -0.10:
-                self.send_cmd(400, param1=0.0)  # Desarmar motores
+            # Usar sensor de distancia para detectar aterrizaje
+            if self.current_distance < 0.15:
+                self.send_cmd(400, param1=0.0)
                 self.get_logger().info("LANDING COMPLETED - Motores desarmados")
                 self.state = "LANDED"
 
         elif self.state == "LANDED":
-            # Congelar posición final para no enviar NaN tras desarme
             setpoint.position = [self.current_x, self.current_y, self.current_z]
 
         self.trajectory_pub.publish(setpoint)
