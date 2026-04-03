@@ -47,7 +47,7 @@ class PX4TrajectoryNode(Node):
         self.locked_y = None
         self.locked_yaw = None
 
-        self.target_z = -1.0
+        self.target_z = -1.5
         self.hold_duration = 5.0
         self.hold_start_time = None
         self.point_x = 2.0
