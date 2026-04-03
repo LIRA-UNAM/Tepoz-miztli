@@ -40,6 +40,10 @@ class RealSenseWindowDetector(Node):
         # VARIABLES
         self.last_frame = None
         self.last_detection = None
+        self.gate_detect_counter = 0
+        self.required_detections = 3
+        self.min_area = 2000
+        self.margin = 30
 
         # RGB SUBSCRIPTION
         self.rgb_sub = self.create_subscription(
@@ -54,7 +58,7 @@ class RealSenseWindowDetector(Node):
         self.coord_pub = self.create_publisher(Point, self.coord_topic, 10)
 
         # YOLO TIMER
-        self.timer = self.create_timer(0.4, self.yolo_process)
+        self.timer = self.create_timer(0.1, self.yolo_process)
 
         self.get_logger().info("RGB detector started (GPU mode).")
 
@@ -97,7 +101,7 @@ class RealSenseWindowDetector(Node):
 
             if self.last_detection is not None:
 
-                x1, y1, x2, y2, distance = self.last_detection
+                x1, y1, x2, y2, distance, class_name = self.last_detection
 
                 cv2.rectangle(
                     annotated,
@@ -109,7 +113,7 @@ class RealSenseWindowDetector(Node):
 
                 cv2.putText(
                     annotated,
-                    f"{distance:.2f}m",
+                    f"{class_name} {distance:.2f}m",
                     (x1, y1 - 10),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.9,
@@ -132,35 +136,59 @@ class RealSenseWindowDetector(Node):
 
         with torch.no_grad():
 
-            results = self.model(self.last_frame, conf=0.5, verbose=False)
+            results = self.model(self.last_frame, conf=0.7, verbose=False)
 
         if results and len(results[0].boxes) > 0:
 
-            box = results[0].boxes[0]
+            boxes = results[0].boxes
+
+            box = max(
+                boxes,
+                key=lambda b: (b.xyxy[0][2]-b.xyxy[0][0])*(b.xyxy[0][3]-b.xyxy[0][1])
+            )
 
             x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
 
             class_id = int(box.cls[0])
             class_name = self.model.names[class_id]
 
-            w = x2 - x1
-            h = y2 - y1
-            area_px = w * h
+            w_box = x2 - x1
+            h_box = y2 - y1
+            area_px = w_box * h_box
+            h, w, _ = self.last_frame.shape
 
             if class_name == "Blue_gates":
 
+                if area_px < self.min_area:
+                    return
+            
+                if x1 < self.margin or x2 > (w - self.margin):
+                    return
+                
+                self.gate_detect_counter += 1
+
+                if self.gate_detect_counter < self.required_detections:
+                    return
+
                 distance = 1038.33 / (area_px ** 0.5)
-                distance_text = f"{distance: .2f}m"
+                distance_text = f"{distance:.2f}m"
 
             elif class_name == "Green_gates":
+                self.gate_detect_counter = 0
                 distance = -1.0
                 distance_text = "wait"
 
-            else: 
+            elif class_name == "Landing_home":
+                self.gate_detect_counter = 0
+                distance = 605.86376 / (area_px ** 0.5)
+                distance_text = f"{distance:.2f}m"
+
+            else:
+                self.gate_detect_counter = 0 
                 distance = -1.0
                 distance_text = "x"
             
-            self.last_detection = (x1, y1, x2, y2, distance)
+            self.last_detection = (x1, y1, x2, y2, distance, class_name)
 
             self.get_logger().info(
                 f"Detected: {class_name} | Distance: {distance_text} | Area_px: {area_px}" 
@@ -168,14 +196,15 @@ class RealSenseWindowDetector(Node):
 
             center = Point()
 
-            center.x = float((x1 + x2) / 2)
-            center.y = float((y1 + y2) / 2)
+            center.x = float((x1 + x2) / 2 - w/2)
+            center.y = float((y1 + y2) / 2 - h/2)
             center.z = float(distance)
 
             self.coord_pub.publish(center)
 
         else:
             self.last_detection = None
+            self.gate_detect_counter = 0
 
 
 # ---------- MAIN ----------
