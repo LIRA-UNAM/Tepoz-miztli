@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
-
 import rclpy
 import math
 import time
-
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 
@@ -24,9 +22,16 @@ class PX4FlowPrecision(Node):
     def __init__(self):
         super().__init__('px4_flow_precision')
 
-        qos_profile = QoSProfile(
+        pub_qos = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1
+        )
+
+        sub_qos = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            durability=DurabilityPolicy.VOLATILE,
             history=HistoryPolicy.KEEP_LAST,
             depth=1
         )
@@ -35,36 +40,36 @@ class PX4FlowPrecision(Node):
         self.offboard_pub = self.create_publisher(
             OffboardControlMode,
             '/fmu/in/offboard_control_mode',
-            qos_profile)
+            pub_qos)
 
         self.trajectory_pub = self.create_publisher(
             TrajectorySetpoint,
             '/fmu/in/trajectory_setpoint',
-            qos_profile)
+            pub_qos)
 
         self.cmd_pub = self.create_publisher(
             VehicleCommand,
             '/fmu/in/vehicle_command',
-            qos_profile)
+            pub_qos)
 
         # Subscribers
         self.local_pos_sub = self.create_subscription(
             VehicleLocalPosition,
             '/fmu/out/vehicle_local_position',
             self.local_pos_cb,
-            qos_profile)
+            sub_qos)
 
         self.attitude_sub = self.create_subscription(
             VehicleAttitude,
             '/fmu/out/vehicle_attitude',
             self.attitude_cb,
-            qos_profile)
+            sub_qos)
 
         self.flow_sub = self.create_subscription(
             DistanceSensor,
             '/fmu/out/distance_sensor',
             self.flow_cb,
-            qos_profile)
+            sub_qos)
 
         # Vision
         self.create_subscription(
@@ -84,6 +89,9 @@ class PX4FlowPrecision(Node):
         self.current_z = 0.0
         self.current_yaw = 0.0
 
+        #Altura medida
+        self.current_distance = 0.0
+
         # Posición bloqueada
         self.locked_x = None
         self.locked_y = None
@@ -91,17 +99,20 @@ class PX4FlowPrecision(Node):
 
         # Visión
         self.gate = None
+        self.last_gate_time = 0
 
         # Parámetros
-        self.target_z = -1.25
+        self.target_altitude = 1.0
+        self.target_z = -1.0
         self.hold_duration = 3.0
-        self.hold_counter = 0
 
-        self.start_time = None
-
-        # Estados
+        # Control de estados
         self.state = "INIT"
-
+        self.hold_start_time  = None
+        self.stable_ticks     = 0
+        self.stable_ticks_needed = 10
+        
+    #Callbacks
     def local_pos_cb(self, msg):
         self.current_x = msg.x
         self.current_y = msg.y
@@ -111,15 +122,20 @@ class PX4FlowPrecision(Node):
         q = msg.q
         siny_cosp = 2 * (q[0] * q[3] + q[1] * q[2])
         cosy_cosp = 1 - 2 * (q[2] * q[2] + q[3] * q[3])
-        yaw = math.atan2(siny_cosp, cosy_cosp)
-        self.current_yaw = yaw
+        self.current_yaw = math.atan2(siny_cosp, cosy_cosp)
 
     def flow_cb(self, msg):
-        self.get_logger().info(
-            f"Flow quality: {msg.signal_quality} Dist: {msg.current_distance:.2f}")
+        self.current_distance = msg.current_distance
+
+        if self.counter % 10 == 0:
+            self.get_logger().info(
+                f"Calidad: {msg.signal_quality} | "
+                f"Distancia: {self.current_distance:.4f} m"
+            )
 
     def gate_cb(self, msg):
         self.gate = msg
+        self.last_gate_time = time.time()
 
     def timer_cb(self):
 
@@ -128,12 +144,18 @@ class PX4FlowPrecision(Node):
         offboard = OffboardControlMode()
         offboard.timestamp = now
         offboard.position = True
-        offboard.velocity = False
+        offboard.velocity =True
         offboard.acceleration = False
         self.offboard_pub.publish(offboard)
 
+        #Setpoint
         setpoint = TrajectorySetpoint()
         setpoint.timestamp = now
+        setpoint.velocity = [float('nan'), float('nan'), float('nan')]
+        setpoint.position = [float('nan'), float('nan'), float('nan')]
+        setpoint.acceleration = [float('nan'), float('nan'), float('nan')]
+        setpoint.jerk = [float('nan'), float('nan'), float('nan')]
+        setpoint.yawspeed = float('nan')
 
         # Bloqueo inicial de posición
         if self.state in ["INIT", "ARMING"]:
@@ -143,13 +165,7 @@ class PX4FlowPrecision(Node):
 
         safe_x = self.locked_x if self.locked_x is not None else 0.0
         safe_y = self.locked_y if self.locked_y is not None else 0.0
-        setpoint.yaw = self.locked_yaw if self.locked_yaw else 0.0
-
-        setpoint.velocity = [float('nan'), float('nan'), float('nan')]
-        setpoint.position = [float('nan'), float('nan'), float('nan')]
-        setpoint.acceleration = [float('nan'), float('nan'), float('nan')]
-        setpoint.jerk = [float('nan'), float('nan'), float('nan')]
-        setpoint.yawspeed = float('nan')
+        setpoint.yaw = self.locked_yaw if self.locked_yaw is not None else 0.0
 
         # MACHINE STATES
 
@@ -167,36 +183,54 @@ class PX4FlowPrecision(Node):
                 self.state = "TAKEOFF"
 
         elif self.state == "TAKEOFF":
-            error_z = abs(self.current_z - self.target_z)
-            if error_z > 0.4:
-                vz = -0.8
-            elif error_z > 0.15:
-                vz = -0.3
-            else:
-                vz = 0.0
-
             setpoint.position = [safe_x, safe_y, self.target_z]
-            setpoint.velocity = [float('nan'), float('nan'), vz]
 
-            if error_z < 0.15:
+            error_alt = abs(self.current_distance - self.target_altitude)
+
+            if error_alt < 0.40:
+                self.stable_ticks += 1
+            else:
+                self.stable_ticks = 0
+
+            if self.counter % 10 == 0:
+                self.get_logger().info(
+                    f"TAKEOFF | dist={self.current_distance:.2f} m "
+                    f"target={self.target_altitude:.2f} m "
+                    f"err={error_alt:.2f} m "
+                    f"stable={self.stable_ticks}/{self.stable_ticks_needed}"
+                )
+
+            if self.stable_ticks >= self.stable_ticks_needed:
                 self.state = "HOLD"
-                self.get_logger().info("TAKEOFF COMPLETE")
+                self.get_logger().info(
+                    f"HOLD POSITION - Estable en {self.current_distance:.2f} m "
+                    f"(target={self.target_altitude:.2f} m, err={error_alt:.2f} m)"
+                )
 
         elif self.state == "HOLD":
 
             setpoint.position = [safe_x, safe_y, self.target_z]
-            setpoint.velocity = [float('nan'), float('nan'), float('nan')]
+            
+            if self.hold_start_time is None:
+                self.hold_start_time = self.get_clock().now()
 
-            self.hold_counter += 1
-            pass_time = self.hold_counter * 0.1
+            elapsed = (
+                self.get_clock().now() - self.hold_start_time
+            ).nanoseconds / 1e9
 
-            if pass_time > self.hold_duration:
+            if self.counter % 10 == 0:
+                self.get_logger().info(
+                    f"HOLD {elapsed:.1f}s / {self.hold_duration}s | "
+                    f"dist={self.current_distance:.2f} m"
+                )
+
+            if elapsed >= self.hold_duration:
                 self.state = "SEARCH"
                 self.get_logger().info("SEARCHING GATE")
 
         elif self.state == "SEARCH":
 
-            setpoint.position = [safe_x, float('nan'), self.target_z]
+            setpoint.position = [float('nan'), float('nan'), float('nan')]
             setpoint.velocity = [0.0, 0.3, 0.0]
 
             if self.gate and self.gate.z < 3.0:
@@ -206,6 +240,10 @@ class PX4FlowPrecision(Node):
         elif self.state == "CENTER":
 
             if not self.gate:
+                self.state = "SEARCH"
+                return
+            
+            if time.time() - self.last_gate_time > 0.5:
                 self.state = "SEARCH"
                 return
 
@@ -230,7 +268,7 @@ class PX4FlowPrecision(Node):
         elif self.state == "CROSS_GATE":
 
             setpoint.position = [float('nan'), float('nan'), float('nan')]
-            setpoint.velocity = [0.8, 0.0, 0.0]
+            setpoint.velocity = [0.5, 0.0, 0.0]
 
             if time.time() - self.start_time > 5.0:
                 self.state = "LAND"
@@ -240,7 +278,7 @@ class PX4FlowPrecision(Node):
             setpoint.position = [safe_x, safe_y, 0.0]
             setpoint.velocity = [float('nan'), float('nan'), 0.4]
 
-            if self.current_z > -0.20:
+            if self.current_distance < 0.15:
                 self.state = "LANDED"
                 self.send_cmd(400, param1=0.0)
                 self.get_logger().info("LANDING COMPLETED")
@@ -250,9 +288,7 @@ class PX4FlowPrecision(Node):
         self.counter += 1
 
     def send_cmd(self, command, param1=0.0, param2=0.0):
-
         msg = VehicleCommand()
-
         msg.timestamp = self.get_clock().now().nanoseconds // 1000
         msg.command = command
         msg.param1 = float(param1)
@@ -260,26 +296,18 @@ class PX4FlowPrecision(Node):
         msg.target_system = 1
         msg.target_component = 1
         msg.from_external = True
-
         self.cmd_pub.publish(msg)
 
 
 def main():
-
     rclpy.init()
-
     node = PX4FlowPrecision()
-
     try:
         rclpy.spin(node)
-
     except KeyboardInterrupt:
         pass
-
     finally:
         node.destroy_node()
         rclpy.shutdown()
-
-
 if __name__ == '__main__':
     main()
