@@ -31,7 +31,6 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'vision_node = vision.vision_node:main',
             'aruco_detector = vision.aruco_detector:main',
             'object_detector = vision.object_detector:main',
         ],

@@ -79,7 +79,7 @@ class PX4FlowPrecision(Node):
             1
         )
 
-        self.timer = self.create_timer(0.1, self.timer_cb)
+        self.timer = self.create_timer(0.05, self.timer_cb)
 
         self.counter = 0
 
