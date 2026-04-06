@@ -69,6 +69,10 @@ class PX4TrajectoryNode(Node):
         self.locked_y   = None
         self.locked_yaw = None
 
+        #Posición bloqueando al llegar al destino.
+        self.landing_x   = None
+        self.landing_y   = None
+
         # Parámetros de vuelo
         self.target_altitude = 1.5   # Altura objetivo en metros (positivo, desde el suelo)
         self.target_z        = -1.5  # Mismo valor en NED para el setpoint de posición
@@ -192,6 +196,8 @@ class PX4TrajectoryNode(Node):
                 )
 
             if abs(self.current_x - self.target_x) < 0.15:
+                self.landing_x = self.current_x
+                self.landing_x = self.current_y
                 self.get_logger().info(
                     f"Destino X alcanzado: {self.current_x:.2f} m | Aterrizando"
                 )
@@ -201,6 +207,12 @@ class PX4TrajectoryNode(Node):
             setpoint.position = [self.target_x, safe_y, 0.0]
             setpoint.velocity = [float('nan'), float('nan'), 0.4]  # Descenso suave
 
+            if self.counter % 20 == 0:
+                self.get_logger().info(
+                    f"LANDING | dist={self.current_distance:.2f} m |"
+                    f"x={self.current_x:.2f} y={self.current_y:.2f}"
+                )
+            
             # Usar sensor de distancia para detectar aterrizaje
             if self.current_distance < 0.15:
                 self.send_cmd(400, param1=0.0)
