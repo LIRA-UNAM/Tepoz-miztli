@@ -239,9 +239,6 @@ class PX4FlowPrecision(Node):
 
         elif self.state == "CENTER":
 
-            if self.gate is None:
-                return
-
             error_x = self.gate.x
             error_y = self.gate.y
 
