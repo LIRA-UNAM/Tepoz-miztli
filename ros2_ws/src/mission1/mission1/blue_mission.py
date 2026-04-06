@@ -231,7 +231,7 @@ class PX4FlowPrecision(Node):
         elif self.state == "SEARCH":
 
             setpoint.position = [float('nan'), float('nan'), float('nan')]
-            setpoint.velocity = [0.0, 0.3, 0.0]
+            setpoint.velocity = [0.0, 0.1, 0.0]
 
             if self.gate and self.gate.z < 3.0:
                 self.state = "CENTER"
@@ -239,12 +239,7 @@ class PX4FlowPrecision(Node):
 
         elif self.state == "CENTER":
 
-            if not self.gate:
-                self.state = "SEARCH"
-                return
-            
-            if time.time() - self.last_gate_time > 0.5:
-                self.state = "SEARCH"
+            if self.gate is None:
                 return
 
             error_x = self.gate.x
