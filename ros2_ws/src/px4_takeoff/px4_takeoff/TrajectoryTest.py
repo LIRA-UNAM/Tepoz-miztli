@@ -197,7 +197,7 @@ class PX4TrajectoryNode(Node):
 
             if abs(self.current_x - self.target_x) < 0.15:
                 self.landing_x = self.current_x
-                self.landing_x = self.current_y
+                self.landing_y = self.current_y
                 self.get_logger().info(
                     f"Destino X alcanzado: {self.current_x:.2f} m | Aterrizando"
                 )
