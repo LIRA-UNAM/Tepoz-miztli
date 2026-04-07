@@ -260,9 +260,9 @@ class PX4FlowPrecision(Node):
         elif self.state == "CROSS_GATE":
 
             setpoint.position = [float('nan'), float('nan'), float('nan')]
-            setpoint.velocity = [0.5, 0.0, 0.0]
+            setpoint.velocity = [0.8, 0.0, 0.0]
 
-            if time.time() - self.start_time > 10.0:
+            if time.time() - self.start_time > 5.0:
                 self.state = "LAND"
 
         elif self.state == "LAND":
