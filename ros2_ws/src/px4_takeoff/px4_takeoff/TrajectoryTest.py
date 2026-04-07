@@ -65,15 +65,20 @@ class PX4TrajectoryNode(Node):
         self.point_x         = 2.0   # Metros a avanzar en X
         self.hold_duration   = 3.0   # Segundos de hover en el destino antes de aterrizar
 
-        # Target X calculado al entrar a FORWARD
+        # Parámetros calculados para avanzar por velocidad y tiempo
+        self.forward_speed    = 0.5   # Velocidad de avance en m/s
+        self.forward_duration = self.point_x / self.forward_speed  # Tiempo necesario para recorrer la distancia
+        
+        # Target X calculado al entrar a FORWARD (ya no se usa estrictamente, pero se deja por estructura)
         self.target_x = None
 
         # Control de estados
         self.state               = "INIT"
         self.stable_ticks        = 0
         self.stable_ticks_needed = 20   # 1s a 20 Hz para confirmar altura
-        self.hold_origin_time    = None  # Timestamp al entrar a HOLD_ORIGIN
-        self.hold_start_time     = None  # Timestamp al entrar a HOLD (en destino)
+        self.hold_origin_time    = None # Timestamp al entrar a HOLD_ORIGIN
+        self.forward_start_time  = None # Timestamp al entrar a FORWARD
+        self.hold_start_time     = None # Timestamp al entrar a HOLD (en destino)
 
     # ===================== CALLBACKS =====================
 
@@ -264,10 +269,11 @@ def main():
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
-        pass
+        node.get_logger().info("Interrupción detectada. Cerrando nodo...")
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':
