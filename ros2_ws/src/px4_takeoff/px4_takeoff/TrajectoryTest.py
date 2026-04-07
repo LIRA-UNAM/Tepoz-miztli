@@ -82,6 +82,9 @@ class PX4TrajectoryNode(Node):
         self.current_y = msg.y
         self.current_z = msg.z
 
+        if self.counter % 20 == 0:
+            self.get_logger().info(f"DEBUG POS: x={self.current_x:.2f}, y={self.current_y:.2f}, z={self.current_z:.2f}")
+
     def attitude_cb(self, msg):
         q = msg.q
         siny_cosp = 2 * (q[0] * q[3] + q[1] * q[2])
