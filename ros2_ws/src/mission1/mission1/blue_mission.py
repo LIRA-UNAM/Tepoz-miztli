@@ -262,7 +262,7 @@ class PX4FlowPrecision(Node):
             setpoint.position = [float('nan'), float('nan'), float('nan')]
             setpoint.velocity = [0.5, 0.0, 0.0]
 
-            if time.time() - self.start_time > 5.0:
+            if time.time() - self.start_time > 10.0:
                 self.state = "LAND"
 
         elif self.state == "LAND":
