@@ -235,6 +235,7 @@ class PX4FlowPrecision(Node):
 
             if self.gate:
                 self.state = "CROSS_GATE"
+                self.start_time = time.time()
                 self.get_logger().info("GATE DETECTED")
 
         elif self.state == "CENTER":
