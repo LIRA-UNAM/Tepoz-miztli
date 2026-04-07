@@ -233,7 +233,7 @@ class PX4FlowPrecision(Node):
             setpoint.position = [float('nan'), float('nan'), float('nan')]
             setpoint.velocity = [0.0, 0.1, 0.0]
 
-            if self.gate and self.gate.z < 3.0:
+            if self.gate:
                 self.state = "CENTER"
                 self.get_logger().info("GATE DETECTED")
 
@@ -252,7 +252,7 @@ class PX4FlowPrecision(Node):
 
             setpoint.velocity = [0.0, vy, vz]
 
-            if abs(error_x) < 20 and abs(error_y) < 20:
+            if abs(error_x) < 50 and abs(error_y) < 50:
                 self.state = "CROSS_GATE"
                 self.start_time = time.time()
                 self.get_logger().info("CENTERED")
