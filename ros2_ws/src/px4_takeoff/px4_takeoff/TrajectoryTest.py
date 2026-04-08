@@ -61,16 +61,13 @@ class PX4TrajectoryNode(Node):
 
         # Parámetros de vuelo
         self.target_altitude = 1.5   # Altura objetivo en metros (desde el suelo)
-        self.target_z        = -1.5  # Mismo valor en NED
-        self.point_x         = 2.0   # Metros a avanzar en X
-        self.hold_duration   = 3.0   # Segundos de hover en el destino antes de aterrizar
+        self.target_z        = -1.5  # Mismo valor en NED (z hacia abajo es negativo)
+        self.point_x         = 2.0   # Metros a avanzar
+        self.hold_duration   = 3.0   # Segundos de hover antes de realizar la siguiente acción
 
-        # Parámetros calculados para avanzar por velocidad y tiempo
-        self.forward_speed    = 0.5   # Velocidad de avance en m/s
-        self.forward_duration = self.point_x / self.forward_speed  # Tiempo necesario para recorrer la distancia
-        
-        # Target X calculado al entrar a FORWARD (ya no se usa estrictamente, pero se deja por estructura)
-        self.target_x = None
+        # Parámetros para avanzar
+        self.forward_speed    = 0.5  # Velocidad de avance estimada en m/s
+        self.forward_duration = self.point_x / self.forward_speed  # Tiempo estimado para recorrer la distancia
 
         # Control de estados
         self.state               = "INIT"
@@ -105,15 +102,17 @@ class PX4TrajectoryNode(Node):
     def timer_cb(self):
         now = self.get_clock().now().nanoseconds // 1000
 
+        # Publicar OffboardControlMode constantemente
         offboard = OffboardControlMode()
         offboard.timestamp    = now
-        offboard.position     = True
-        offboard.velocity     = False
+        offboard.position     = True   # Controlamos por POSICIÓN
+        offboard.velocity     = False  # Desactivamos control por velocidad
         offboard.acceleration = False
         offboard.attitude     = False
         offboard.body_rate    = False
         self.offboard_pub.publish(offboard)
 
+        # Preparar TrajectorySetpoint
         setpoint = TrajectorySetpoint()
         setpoint.timestamp    = now
         setpoint.position     = [float('nan'), float('nan'), float('nan')]
@@ -136,12 +135,12 @@ class PX4TrajectoryNode(Node):
 
         if self.state == "INIT":
             if self.counter > 40:
-                self.send_cmd(176, param1=1.0, param2=6.0)
+                self.send_cmd(176, param1=1.0, param2=6.0) # Entrar en OFFBOARD
                 self.state = "ARMING"
 
         elif self.state == "ARMING":
             if self.counter > 60:
-                self.send_cmd(400, param1=1.0)
+                self.send_cmd(400, param1=1.0) # Armar motores
                 self.get_logger().info(f"ARMED | Ascendiendo a {self.target_altitude:.1f} m")
                 self.state = "TAKEOFF"
 
@@ -174,45 +173,47 @@ class PX4TrajectoryNode(Node):
 
             if self.counter % 20 == 0:
                 self.get_logger().info(
-                    f"HOLD_ORIGIN {elapsed:.1f}s / 3.0s | dist={self.current_distance:.2f} m"
+                    f"HOLD_ORIGIN {elapsed:.1f}s / {self.hold_duration:.1f}s | dist={self.current_distance:.2f} m"
                 )
 
             if elapsed >= self.hold_duration:
                 self.forward_start_time = self.get_clock().now()
+                
+                # --- CORRECCIÓN ---
+                # Calculamos matemáticamente el destino usando el yaw bloqueado al inicio.
+                # Esto asegura que avance hacia "adelante" del dron.
+                self.landing_x = self.locked_x + (self.point_x * math.cos(self.locked_yaw))
+                self.landing_y = self.locked_y + (self.point_x * math.sin(self.locked_yaw))
+                
                 self.get_logger().info(
-                    f"Avanzando {self.point_x} m a {self.forward_speed} m/s "
+                    f"Avanzando {self.point_x} m hacia: x={self.landing_x:.2f}, y={self.landing_y:.2f} "
                     f"durante {self.forward_duration:.1f}s"
                 )
                 self.state = "FORWARD"
 
         elif self.state == "FORWARD":
-            # Avanzar en X con velocidad controlada manteniendo altura
-            # Usa velocidad en X en lugar de posición absoluta para no depender
-            # de que VehicleLocalPosition esté disponible
-            setpoint.velocity = [self.forward_speed, 0.0, float('nan')]
-            setpoint.position = [float('nan'), float('nan'), self.target_z]
+            # --- CORRECCIÓN ---
+            # Usamos Control de Posición directo hacia el nuevo punto calculado
+            setpoint.position = [self.landing_x, self.landing_y, self.target_z]
 
             elapsed_fwd = (self.get_clock().now() - self.forward_start_time).nanoseconds / 1e9
 
             if self.counter % 20 == 0:
                 self.get_logger().info(
                     f"FORWARD | t={elapsed_fwd:.1f}s / {self.forward_duration:.1f}s | "
-                    f"x={self.current_x:.2f} dist={self.current_distance:.2f} m"
+                    f"x={self.current_x:.2f} y={self.current_y:.2f}"
                 )
 
             if elapsed_fwd >= self.forward_duration:
-                # Bloquear posición real al llegar
-                self.landing_x = self.current_x
-                self.landing_y = self.current_y
                 self.hold_start_time = self.get_clock().now()
                 self.get_logger().info(
-                    f"Destino alcanzado en t={elapsed_fwd:.1f}s | "
-                    f"Bloqueando pos x={self.landing_x:.2f} | HOLD {self.hold_duration:.0f}s"
+                    f"Tiempo destino alcanzado en t={elapsed_fwd:.1f}s | "
+                    f"Posición bloqueada en x={self.landing_x:.2f}, y={self.landing_y:.2f} | HOLD {self.hold_duration:.0f}s"
                 )
                 self.state = "HOLD"
 
         elif self.state == "HOLD":
-            # Mantener posición bloqueada en destino
+            # Mantener posición calculada del destino
             setpoint.position = [self.landing_x, self.landing_y, self.target_z]
 
             elapsed = (self.get_clock().now() - self.hold_start_time).nanoseconds / 1e9
@@ -224,13 +225,14 @@ class PX4TrajectoryNode(Node):
                 )
 
             if elapsed >= self.hold_duration:
-                self.get_logger().info("LANDING - Bajando en línea recta")
+                self.get_logger().info("LANDING - Bajando en línea recta en nueva posición")
                 self.state = "LANDING"
 
         elif self.state == "LANDING":
-            # Descender en vertical sobre la posición bloqueada
+            # Descender en vertical sobre la nueva posición bloqueada
             setpoint.position = [self.landing_x, self.landing_y, 0.0]
-            setpoint.velocity = [float('nan'), float('nan'), 0.4]  # Descenso suave
+            # Solo bajamos la velocidad de descenso a 0.4 m/s (en NED es positivo para bajar)
+            setpoint.velocity = [float('nan'), float('nan'), 0.4]
 
             if self.counter % 20 == 0:
                 self.get_logger().info(
@@ -239,7 +241,7 @@ class PX4TrajectoryNode(Node):
                 )
 
             if self.current_distance < 0.15:
-                self.send_cmd(400, param1=0.0)
+                self.send_cmd(400, param1=0.0) # Desarmo motores
                 self.get_logger().info("LANDING COMPLETED - Motores desarmados")
                 self.state = "LANDED"
 
