@@ -41,7 +41,7 @@ class RealSenseWindowDetector(Node):
         self.last_frame = None
         self.last_detection = None
         self.gate_detect_counter = 0
-        self.required_detections = 5
+        self.required_detections = 10
         self.min_area = 2000
         self.margin = 30
 
@@ -55,7 +55,10 @@ class RealSenseWindowDetector(Node):
 
         # PUBLISHERS
         self.image_pub = self.create_publisher(Image, self.image_pub_topic, 10)
-        self.coord_pub = self.create_publisher(Point, self.coord_topic, 10)
+
+        self.blue_coord_pub = self.create_publisher(Point, '/m1/blue/coordinates', 10)
+        self.green_coord_pub = self.create_publisher(Point, '/m1/green/coordinates', 10)
+        self.landing_coord_pub = self.create_publisher(Point, '/m4/landing/coordinates', 100)
 
         # YOLO TIMER
         self.timer = self.create_timer(0.1, self.yolo_process)
@@ -200,11 +203,14 @@ class RealSenseWindowDetector(Node):
             center.y = float((y1 + y2) / 2 - h/2)
             center.z = float(distance)
 
-            self.coord_pub.publish(center)
+            if class_name == "Blue_gates":
+                self.blue_coord_pub.publish(center)
 
-        else:
-            self.last_detection = None
-            self.gate_detect_counter = 0
+            elif class_name == "Green_gates":
+                self.green_coord_pub.publish(center)
+
+            elif class_name == "Landing_home":
+                self.landing_coord_pub.publish(center)
 
 
 # ---------- MAIN ----------
