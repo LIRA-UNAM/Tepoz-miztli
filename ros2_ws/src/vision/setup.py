@@ -33,6 +33,7 @@ setup(
         'console_scripts': [
             'aruco_detector = vision.aruco_detector:main',
             'object_detector = vision.object_detector:main',
+            'down_camera = vision.down_camera:main',
         ],
     },
 )
