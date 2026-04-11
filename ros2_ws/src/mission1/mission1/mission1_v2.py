@@ -264,7 +264,7 @@ class PX4FlowPrecision(Node):
             setpoint.velocity = [0.8, 0.0, 0.0]
 
 # ------------------------
-            if time.time() - self.start_time > 6.0:
+            if time.time() - self.start_time > 4.0:
                 self.state = "VEL_REDUC"
                 self.start_time = time.time()
                 self.get_logger().info("REDUCING VELOCITY")
@@ -284,11 +284,11 @@ class PX4FlowPrecision(Node):
                 setpoint.velocity = [0.2, 0.0, 0.0]
             
             else:
-                self.state = "HOLD1"
+                self.state = "TURN1"
                 self.locked_x1 = self.current_x
                 self.locked_y1 = self.current_y
 
-        elif self.state == "HOLD1":
+        elif self.state == "TURN1":
             
             setpoint.position = [self.locked_x1, self.locked_y1, self.target_z]
             setpoint.yaw = 1.57 
@@ -296,8 +296,18 @@ class PX4FlowPrecision(Node):
 
             #Condición para determinar el cambio de estado 
             if abs(self.current_yaw - 1.57) < 0.1:
-                self.state = "LAND"
+                self.start_time = time.time()
+                self.state = "HOLD1"
 
+        elif self.state == "HOLD1":
+
+            setpoint.position = [self.locked_x1, self.locked_y1, self.target_z]
+            setpoint.yaw = 1.57
+            setpoint.yawspeed = float('nan')
+            elapsed = time.time() - self.start_time
+
+            if elapsed >= 4.0:
+                self.state = "LAND"
 #---------------------------
         elif self.state == "LAND":
 
