@@ -22,7 +22,7 @@ TARGET_Z = -1.0
 HOLD_DURATION = 3.0
 
 #Aruco
-APPROACH_DIST = 0.25        #distancia entre el aruco y el drone.
+APPROACH_DIST = 0.80        #distancia entre el aruco y el drone.
 APPROACH_KP_FWD = 0.4       # ganancia de profundidad
 APPROACH_KP_LAT  = 0.5      # ganancia lateral
 APPROACH_KP_VERT = 0.3      # ganancia vertical
