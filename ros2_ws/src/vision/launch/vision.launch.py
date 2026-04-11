@@ -19,7 +19,7 @@ def generate_launch_description():
             'image_topic': '/camera/camera/color/image_raw',
             'camera_info_topic': '/camera/camera/color/camera_info',
             'aruco_dictionary': 'DICT_5X5_1000',
-            'marker_size_m': 0.20,
+            'marker_size_m': 0.18,
         }]
     )
 
