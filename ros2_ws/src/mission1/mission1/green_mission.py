@@ -102,8 +102,8 @@ class PX4FlowPrecision(Node):
         self.last_gate_time = 0
 
         # Parámetros
-        self.target_altitude = 1.0
-        self.target_z = -1.0
+        self.target_altitude = 1.5
+        self.target_z = -1.5
         self.hold_duration = 3.0
 
         # Control de estados
