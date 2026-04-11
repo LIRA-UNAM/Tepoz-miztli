@@ -30,6 +30,8 @@ setup(
     entry_points={
         'console_scripts': [
             'blue_mission = mission1.blue_mission:main',
+            'green_mission = mission1.green_mission:main',
+            'translate_blue = mission1.mission1_v2:main',
         ],
     },
 )
