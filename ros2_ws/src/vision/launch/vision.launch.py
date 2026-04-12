@@ -1,12 +1,20 @@
 from launch import LaunchDescription
 from launch_ros.actions import Node
 
+
 def generate_launch_description():
 
     yolo_node = Node(
         package='vision',
         executable='object_detector',
         name='object',
+        output='screen'
+    )
+
+    green_detector = Node(
+        package='vision',
+        executable='green_detector',
+        name='green_detector',
         output='screen'
     )
 
@@ -20,7 +28,7 @@ def generate_launch_description():
             'camera_info_topic': '/camera/camera/color/camera_info',
             'aruco_dictionary': 'DICT_5X5_1000',
             'marker_size_m': 0.18,
-        }] 
+        }]
     )
 
     usb_camera = Node(
@@ -58,7 +66,6 @@ def generate_launch_description():
         arguments=['/aruco/image_annotated']
     )
 
-
     landing_view = Node(
         package='rqt_image_view',
         executable='rqt_image_view',
@@ -66,12 +73,21 @@ def generate_launch_description():
         arguments=['/m4/landing/detections']
     )
 
+    green_view = Node(
+        package='rqt_image_view',
+        executable='rqt_image_view',
+        name='green_view',
+        arguments=['/m1/green/detections']
+    )
+
     return LaunchDescription([
         usb_camera,
         yolo_node,
+        green_detector,
         landing_detector,
         aruco_node,
         yolo_view,
+        green_view,
         aruco_view,
         landing_view
     ])

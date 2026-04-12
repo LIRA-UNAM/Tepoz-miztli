@@ -2,7 +2,7 @@
 
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import CompressedImage, Image
+from sensor_msgs.msg import Image
 from geometry_msgs.msg import Point
 
 import cv2
@@ -13,18 +13,19 @@ import torch
 from ultralytics import YOLO
 
 
-class LandingUSBDetector(Node):
+class RealSenseWindowDetector(Node):
 
     def __init__(self):
-        super().__init__('landing_usb_detector')
+        super().__init__('m1_green_realsense_detector')
 
         # TOPICS
-        self.rgb_topic = '/image_raw/compressed'
-        self.image_pub_topic = '/m4/landing/detections'
+        self.rgb_topic = '/camera/camera/color/image_raw'
+        self.image_pub_topic = '/m1/green/detections'
+        self.coord_topic = '/m1/green/coordinates'
 
         # YOLO MODEL
-        weights_dir = os.path.expanduser('~/Tepoz-miztli/ros2_ws/weights/Landing_Train')
-        model_path = os.path.join(weights_dir, 'Landing_Model.pt')
+        weights_dir = os.path.expanduser('~/Tepoz-miztli/ros2_ws/weights')
+        model_path = os.path.join(weights_dir, 'best.pt')
 
         self.get_logger().info(f"Loading YOLO model: {model_path}")
 
@@ -33,51 +34,45 @@ class LandingUSBDetector(Node):
         # mover modelo a GPU
         self.model.to("cuda")
 
+        # optimización cudnn
         torch.backends.cudnn.benchmark = True
 
         # VARIABLES
         self.last_frame = None
         self.last_detection = None
+        self.gate_detect_counter = 0
+        self.required_detections = 11
+        self.min_area = 2000
+        self.margin = 30
 
-        self.min_area = 1500
-        self.margin = 20
-        self.landing_detect_counter = 0
-        self.required_detections = 2
-
-        # SUBSCRIPTION
+        # RGB SUBSCRIPTION
         self.rgb_sub = self.create_subscription(
-            CompressedImage,
+            Image,
             self.rgb_topic,
             self.image_callback,
             10
         )
 
         # PUBLISHERS
-        self.image_pub = self.create_publisher(
-            Image,
-            self.image_pub_topic,
-            10
-        )
-
-        self.landing_coord_pub = self.create_publisher(
-            Point,
-            '/m4/landing/coordinates',
-            10
-        )
+        self.image_pub = self.create_publisher(Image, self.image_pub_topic, 10)
+        self.coord_pub = self.create_publisher(Point, self.coord_topic, 10)
 
         # YOLO TIMER
         self.timer = self.create_timer(0.1, self.yolo_process)
 
-        self.get_logger().info("Landing USB detector started (GPU mode).")
+        self.get_logger().info("RGB detector started (GPU mode).")
 
-    # ---------- MJPEG -> OpenCV ----------
-    def compressed_to_numpy(self, msg):
+    # ---------- ROS Image -> OpenCV ----------
+    def rosimg_to_numpy(self, msg):
 
-        np_arr = np.frombuffer(msg.data, np.uint8)
+        img = np.frombuffer(msg.data, dtype=np.uint8)
 
-        frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+        img = img.reshape(msg.height, msg.width, -1)
 
-        return frame
+        if msg.encoding == "rgb8":
+            img = img[:, :, ::-1]
+
+        return img
 
     # ---------- OpenCV -> ROS Image ----------
     def numpy_to_rosimg(self, img, header):
@@ -99,10 +94,7 @@ class LandingUSBDetector(Node):
 
         try:
 
-            frame = self.compressed_to_numpy(msg)
-
-            if frame is None:
-                return
+            frame = self.rosimg_to_numpy(msg)
 
             self.last_frame = frame
             annotated = frame.copy()
@@ -134,7 +126,6 @@ class LandingUSBDetector(Node):
             self.image_pub.publish(img_msg)
 
         except Exception as e:
-
             self.get_logger().error(f"Stream error: {e}")
 
     # ---------- YOLO PROCESS ----------
@@ -145,7 +136,7 @@ class LandingUSBDetector(Node):
 
         with torch.no_grad():
 
-            results = self.model(self.last_frame, conf=0.7, device="cuda", half=True, verbose=False)
+            results = self.model(self.last_frame, conf=0.7, verbose=False)
 
         if results and len(results[0].boxes) > 0:
 
@@ -161,33 +152,41 @@ class LandingUSBDetector(Node):
             class_id = int(box.cls[0])
             class_name = self.model.names[class_id]
 
-            if class_name != "Landing_home":
-                self.landing_detect_counter = 0
-                return
-
             w_box = x2 - x1
             h_box = y2 - y1
             area_px = w_box * h_box
-
             h, w, _ = self.last_frame.shape
 
-            if area_px < self.min_area:
-                return
+            if class_name == "Green_gates":
 
-            if x1 < self.margin or x2 > (w - self.margin):
-                return
+                if area_px < self.min_area:
+                    return
             
-            self.landing_detect_counter += 1
+                if x1 < self.margin or x2 > (w - self.margin):
+                    return
+                
+                self.gate_detect_counter += 1
 
-            if self.landing_detect_counter < self.required_detections:
-                return
+                if self.gate_detect_counter < self.required_detections:
+                    return
 
-            distance = 605.86376 / (area_px ** 0.5)
+                distance = 615.33 / (area_px ** 0.5)
+                distance_text = f"{distance:.2f}m"
 
+            elif class_name == "Blue_gates":
+                self.gate_detect_counter = 0
+                distance = -1.0
+                distance_text = "wait"
+
+            else:
+                self.gate_detect_counter = 0 
+                distance = -1.0
+                distance_text = "x"
+            
             self.last_detection = (x1, y1, x2, y2, distance, class_name)
 
             self.get_logger().info(
-                f"Detected: {class_name} | Distance: {distance:.2f}m | Area_px: {area_px}"
+                f"Detected: {class_name} | Distance: {distance_text} | Area_px: {area_px}" 
             )
 
             center = Point()
@@ -196,12 +195,11 @@ class LandingUSBDetector(Node):
             center.y = float((y1 + y2) / 2 - h/2)
             center.z = float(distance)
 
-            self.landing_coord_pub.publish(center)
+            self.coord_pub.publish(center)
 
         else:
-
             self.last_detection = None
-            self.landing_detect_counter = 0
+            self.gate_detect_counter = 0
 
 
 # ---------- MAIN ----------
@@ -209,7 +207,7 @@ def main(args=None):
 
     rclpy.init(args=args)
 
-    node = LandingUSBDetector()
+    node = RealSenseWindowDetector()
 
     try:
         rclpy.spin(node)
