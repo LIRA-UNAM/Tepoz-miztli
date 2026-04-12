@@ -21,6 +21,7 @@ class RealSenseWindowDetector(Node):
         # TOPICS
         self.rgb_topic = '/camera/camera/color/image_raw'
         self.image_pub_topic = '/m1/blue/detections'
+        self.coord_topic = '/m1/blue/coordinates'
 
         # YOLO MODEL
         weights_dir = os.path.expanduser('~/Tepoz-miztli/ros2_ws/weights')
@@ -39,10 +40,8 @@ class RealSenseWindowDetector(Node):
         # VARIABLES
         self.last_frame = None
         self.last_detection = None
-        self.gate_detect_counter_blue = 0
-        self.gate_detect_counter_green = 0
-        self.required_detections_blue = 10
-        self.required_detections_green = 7
+        self.gate_detect_counter = 0
+        self.required_detections = 10
         self.min_area = 2000
         self.margin = 30
 
@@ -56,10 +55,7 @@ class RealSenseWindowDetector(Node):
 
         # PUBLISHERS
         self.image_pub = self.create_publisher(Image, self.image_pub_topic, 10)
-
-        self.blue_coord_pub = self.create_publisher(Point, '/m1/blue/coordinates', 10)
-        self.green_coord_pub = self.create_publisher(Point, '/m1/green/coordinates', 10)
-        self.landing_coord_pub = self.create_publisher(Point, '/m4/landing/coordinates', 10)
+        self.coord_pub = self.create_publisher(Point, self.coord_topic, 10)
 
         # YOLO TIMER
         self.timer = self.create_timer(0.1, self.yolo_process)
@@ -163,45 +159,32 @@ class RealSenseWindowDetector(Node):
 
             if class_name == "Blue_gates":
 
-                self.gate_detect_counter_green = 0
                 if area_px < self.min_area:
                     return
             
                 if x1 < self.margin or x2 > (w - self.margin):
                     return
                 
-                self.gate_detect_counter_blue += 1
+                self.gate_detect_counter += 1
 
-                if self.gate_detect_counter_blue < self.required_detections_blue:
+                if self.gate_detect_counter < self.required_detections:
                     return
+
                 distance = 1038.33 / (area_px ** 0.5)
                 distance_text = f"{distance:.2f}m"
 
             elif class_name == "Green_gates":
-                
-                self.gate_detect_counter_blue = 0
-                if area_px < self.min_area:
-                    return
-            
-                if x1 < self.margin or x2 > (w - self.margin):
-                    return
-                
-                self.gate_detect_counter_green += 1
-
-                if self.gate_detect_counter_green < self.required_detections_green:
-                    return
+                self.gate_detect_counter = 0
                 distance = -1.0
                 distance_text = "wait"
 
             elif class_name == "Landing_home":
-                self.gate_detect_counter_blue = 0
-                self.gate_detect_counter_green = 0 
+                self.gate_detect_counter = 0
                 distance = 605.86376 / (area_px ** 0.5)
                 distance_text = f"{distance:.2f}m"
 
             else:
-                self.gate_detect_counter_blue = 0
-                self.gate_detect_counter_green = 0 
+                self.gate_detect_counter = 0 
                 distance = -1.0
                 distance_text = "x"
             
@@ -217,18 +200,11 @@ class RealSenseWindowDetector(Node):
             center.y = float((y1 + y2) / 2 - h/2)
             center.z = float(distance)
 
-            if class_name == "Blue_gates":
-                self.blue_coord_pub.publish(center)
+            self.coord_pub.publish(center)
 
-            elif class_name == "Green_gates":
-                self.green_coord_pub.publish(center)
-
-            elif class_name == "Landing_home":
-                self.landing_coord_pub.publish(center)
         else:
             self.last_detection = None
-            self.gate_detect_counter_blue = 0
-            self.gate_detect_counter_green = 0
+            self.gate_detect_counter = 0
 
 
 # ---------- MAIN ----------
