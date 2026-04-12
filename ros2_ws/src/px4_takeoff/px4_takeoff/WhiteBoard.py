@@ -114,6 +114,18 @@ class WhiteBoardMission(Node):
         self.locked_x   = None
         self.locked_y   = None
         self.locked_yaw = None
+        #Posición bloqueda enfrente del Aruco (HOLD)
+        self.front_locked_x = None
+        self.front_locked_y = None
+        self.front_locked_yaw = None
+        #Posición bloqueda para slide_end (Hold 3)
+        self.end_slide_locked_x = None
+        self.end_slide_locked_y = None
+        self.end_slide_locked_yaw = None
+        #Posición final bloqueda (Hold final del nodo)
+        # self.finish_locked_x = None
+        # self.finish_locked_y = None
+        # self.finish_locked_yaw = None
 
         #State Machine
         self.state = "INIT"
@@ -309,8 +321,9 @@ class WhiteBoardMission(Node):
                         f'stable={self.approach_stable_cnt}/{APPROACH_STABLE}'
                     )
                 if self.approach_stable_cnt >= APPROACH_STABLE:
-                    self.locked_x = self.current_x
-                    self.locked_y = self.current_y
+                    self.front_locked_x = self.current_x
+                    self.front_locked_y = self.current_y
+                    self.front_locked_yaw = self.current_yaw
                     self.hold_front_start = self.get_clock().now()
                     self.get_logger().info(
                         f'POSICIÓN FRENTE AL ARUCO — tz={tz:.3f} m | '
@@ -319,8 +332,8 @@ class WhiteBoardMission(Node):
                     self.state = 'HOLD_FRONT'
         
         elif self.state == 'HOLD_FRONT':
-            setpoint.position = [self.locked_x, self.locked_y, TARGET_Z]
-            setpoint.yaw = self.locked_yaw
+            setpoint.position = [self.front_locked_x, self.front_locked_y, TARGET_Z]
+            setpoint.yaw = self.front_locked_yaw
             elapsed = self._elapsed_s(self.hold_front_start, self.get_clock())
             if self.counter % 10 == 0:
                 self.get_logger().info(
@@ -328,7 +341,7 @@ class WhiteBoardMission(Node):
                     f'dist={self.current_distance:.2f}m'
                 )
             if elapsed >= HOLD_DURATION:
-                self.slide_locked_yaw = self.current_yaw
+                self.slide_locked_yaw = self.front_locked_yaw
                 self.slide_start_time = self.get_clock().now()
                 self.get_logger().info(
                     f'SLIDE_RIGHT — {SLIDE_DURATION:.0f}s a {SLIDE_SPEED:.2f} m/s '
@@ -351,9 +364,9 @@ class WhiteBoardMission(Node):
                 )
 
             if elapsed >= SLIDE_DURATION:
-                self.locked_x = self.current_x
-                self.locked_y = self.current_y
-                self.locked_yaw = self.current_yaw
+                self.end_slide_locked_x = self.current_x
+                self.end_slide_locked_y = self.current_y
+                self.end_slide_locked_yaw = self.current_yaw
                 self.hold_start_time = self.get_clock().now()
                 self.get_logger().info(
                     f'Slide completado | x={self.locked_x:.3f} y={self.locked_y:.3f}'
@@ -361,13 +374,13 @@ class WhiteBoardMission(Node):
                 self.state = 'HOLD_SLIDE'
 
         elif self.state == 'HOLD_SLIDE':
-            setpoint.position = [self.locked_x, self.locked_y, TARGET_Z]
+            setpoint.position = [self.end_slide_locked_x, self.end_slide_locked_y, TARGET_Z]
             setpoint.yaw = self.locked_yaw
             elapsed = self._elapsed_s(self.hold_start_time, self.get_clock())
             if self.counter % 10 == 0:
                 self.get_logger().info(f'HOLD_SLIDE {elapsed:.1f}/{HOLD_DURATION:.0f}s')
             if elapsed >= HOLD_DURATION:
-                raw = self.locked_yaw + ROTATE_DIR * (math.pi / 2.0)
+                raw = self.end_slide_locked_yaw + ROTATE_DIR * (math.pi / 2.0)
                 self.target_yaw_final = math.atan2(math.sin(raw), math.cos(raw))
                 self.rotate_stable_cnt = 0
                 self.get_logger().info(
@@ -378,7 +391,7 @@ class WhiteBoardMission(Node):
                 self.state = 'ROTATE_90'
 
         elif self.state == 'ROTATE_90':
-            setpoint.position = [self.locked_x, self.locked_y, TARGET_Z]
+            setpoint.position = [self.end_slide_locked_x, self.end_slide_locked_y, TARGET_Z]
             setpoint.yaw = self.target_yaw_final
             yaw_err = math.atan2(
                 math.sin(self.target_yaw_final - self.current_yaw),
@@ -399,7 +412,7 @@ class WhiteBoardMission(Node):
                 self.state = 'HOLD_FINAL'
 
         elif self.state == 'HOLD_FINAL':
-            setpoint.position = [self.locked_x, self.locked_y, TARGET_Z]
+            setpoint.position = [self.end_slide_locked_x, self.end_slide_locked_y, TARGET_Z]
             setpoint.yaw = self.target_yaw_final
             if self.counter % 40 == 0:
                 self.get_logger().info('MISION FINALIZADA')
