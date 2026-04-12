@@ -284,8 +284,10 @@ class WhiteBoardMission(Node):
         
         elif self.state == 'APPROACH':
             setpoint.yaw = self.locked_yaw
+            setpoint.position[2] = TARGET_Z
             if self.aruco_tvec is None:
-                setpoint.position = [self.current_x, self.current_y, TARGET_Z]
+                setpoint.velocity[0] = 0.0
+                setpoint.velocity[1] = 0.0
                 self.approach_stable_cnt = 0
                 if self.counter % 10 == 0:
                     self.get_logger().warn('Aruco perdido durante APPROACH - esperando')
@@ -296,21 +298,16 @@ class WhiteBoardMission(Node):
 
                 dist_err = tz - APPROACH_DIST
 
-                bvx = self._clamp(APPROACH_KP_FWD  * dist_err, -APPROACH_MAX_V, APPROACH_MAX_V)
-                bvy = self._clamp(APPROACH_KP_LAT  * tx,       -APPROACH_MAX_V, APPROACH_MAX_V)
-                bvz = self._clamp(APPROACH_KP_VERT * ty,       -0.2,            0.2)
+                bvx = self._clamp(APPROACH_KP_FWD * dist_err, -APPROACH_MAX_V, APPROACH_MAX_V)
+                bvy = self._clamp(APPROACH_KP_LAT * tx,       -APPROACH_MAX_V, APPROACH_MAX_V)
 
                 yaw = self.locked_yaw
-                setpoint.velocity = [
-                    bvx*math.cos(yaw) - bvy*math.sin(yaw),
-                    bvx*math.sin(yaw) + bvy*math.cos(yaw),
-                    bvz,
-                ]
+                setpoint.velocity[0] = bvx * math.cos(yaw) - bvy * math.sin(yaw)
+                setpoint.velocity[1] = bvx * math.sin(yaw) + bvy * math.cos(yaw)
 
                 reached = (
                     abs(dist_err) < APPROACH_TOL_Z and
-                    abs(tx) < APPROACH_TOL_XY and
-                    abs(ty) < APPROACH_TOL_XY
+                    abs(tx) < APPROACH_TOL_XY
                 )
                 self.approach_stable_cnt = self.approach_stable_cnt + 1 if reached else 0
 
@@ -375,7 +372,7 @@ class WhiteBoardMission(Node):
 
         elif self.state == 'HOLD_SLIDE':
             setpoint.position = [self.end_slide_locked_x, self.end_slide_locked_y, TARGET_Z]
-            setpoint.yaw = self.locked_yaw
+            setpoint.yaw = self.end_slide_locked_yaw
             elapsed = self._elapsed_s(self.hold_start_time, self.get_clock())
             if self.counter % 10 == 0:
                 self.get_logger().info(f'HOLD_SLIDE {elapsed:.1f}/{HOLD_DURATION:.0f}s')
