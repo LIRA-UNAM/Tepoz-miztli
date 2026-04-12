@@ -41,7 +41,7 @@ class RealSenseWindowDetector(Node):
         self.last_frame = None
         self.last_detection = None
         self.gate_detect_counter = 0
-        self.required_detections = 5
+        self.required_detections = 10
         self.min_area = 2000
         self.margin = 30
 
