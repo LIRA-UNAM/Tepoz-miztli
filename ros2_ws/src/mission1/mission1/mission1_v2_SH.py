@@ -297,17 +297,8 @@ class PX4FlowPrecision(Node):
             #Condición para determinar el cambio de estado 
             if abs(self.current_yaw - 1.57) < 0.1:
                 self.start_time = time.time()
-                self.state = "HOLD1"
-
-        elif self.state == "HOLD1":
-
-            setpoint.position = [self.locked_x1, self.locked_y1, self.target_z]
-            setpoint.yaw = 1.57
-            setpoint.yawspeed = float('nan')
-            elapsed = time.time() - self.start_time
-
-            if elapsed >= 4.0:
                 self.state = "LAND"
+
 #---------------------------
         elif self.state == "LAND":
 
