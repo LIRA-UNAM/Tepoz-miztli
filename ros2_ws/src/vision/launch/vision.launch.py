@@ -1,7 +1,6 @@
 from launch import LaunchDescription
 from launch_ros.actions import Node
 
-
 def generate_launch_description():
 
     yolo_node = Node(
@@ -24,27 +23,6 @@ def generate_launch_description():
         }]
     )
 
-    usb_camera = Node(
-        package='usb_cam',
-        executable='usb_cam_node_exe',
-        name='landing_camera',
-        output='screen',
-        parameters=[{
-            'video_device': '/dev/video6',
-            'pixel_format': 'mjpeg2rgb',
-            'image_width': 640,
-            'image_height': 480,
-            'framerate': 30.0
-        }]
-    )
-
-    landing_detector = Node(
-        package='vision',
-        executable='down_camera',
-        name='landing_detector',
-        output='screen'
-    )
-
     yolo_view = Node(
         package='rqt_image_view',
         executable='rqt_image_view',
@@ -59,19 +37,9 @@ def generate_launch_description():
         arguments=['/aruco/image_annotated']
     )
 
-    landing_view = Node(
-        package='rqt_image_view',
-        executable='rqt_image_view',
-        name='landing_view',
-        arguments=['/m4/landing/detections']
-    )
-
     return LaunchDescription([
-        usb_camera,
         yolo_node,
-        landing_detector,
         aruco_node,
         yolo_view,
-        aruco_view,
-        landing_view
+        aruco_view
     ])
