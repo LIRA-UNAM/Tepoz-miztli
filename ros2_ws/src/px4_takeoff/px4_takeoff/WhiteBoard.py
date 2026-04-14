@@ -23,13 +23,13 @@ HOLD_DURATION = 3.0
 
 #Aruco
 APPROACH_DIST = 0.80        #distancia entre el aruco y el drone.
-APPROACH_KP_FWD = 0.4       # ganancia de profundidad
+APPROACH_KP_FWD = 0.2       # ganancia de profundidad
 APPROACH_KP_LAT  = 0.5      # ganancia lateral
 APPROACH_KP_VERT = 0.3      # ganancia vertical
 APPROACH_MAX_V   = 0.3      # velocidad máx [m/s]
-APPROACH_TOL_XY  = 0.05     # tolerancia lateral
-APPROACH_TOL_Z   = 0.04     # tolerancia de profundidad
-APPROACH_STABLE  = 15       # ticks para confirmar la llegada al aruco
+APPROACH_TOL_XY  = 0.10     # tolerancia lateral
+APPROACH_TOL_Z   = 0.15     # tolerancia de profundidad
+APPROACH_STABLE  = 20       # ticks para confirmar la llegada al aruco
 
 #Velocidad de busqueda girando y deslizado de busqueda
 SEARCH_YAWSPEED = 0.25 #rad/s
@@ -117,6 +117,7 @@ class WhiteBoardMission(Node):
         #Posición bloqueda enfrente del Aruco (HOLD)
         self.front_locked_x = None
         self.front_locked_y = None
+        self.front_locked_z = None
         self.front_locked_yaw = None
         #Posición bloqueda para slide_end (Hold 3)
         self.end_slide_locked_x = None
@@ -298,12 +299,18 @@ class WhiteBoardMission(Node):
 
                 dist_err = tz - APPROACH_DIST
 
-                bvx = self._clamp(APPROACH_KP_FWD * dist_err, -APPROACH_MAX_V, APPROACH_MAX_V)
+                if abs(dist_err) < APPROACH_TOL_Z:
+                    bvx = 0.0
+                else:
+                    bvx = self._clamp(APPROACH_KP_FWD * dist_err, -APPROACH_MAX_V, APPROACH_MAX_V)
+                
                 bvy = self._clamp(APPROACH_KP_LAT * tx,       -APPROACH_MAX_V, APPROACH_MAX_V)
+                bvz = self._clamp(APPROACH_KP_VERT * ty, -0.15, 0.15)
 
                 yaw = self.locked_yaw
                 setpoint.velocity[0] = bvx * math.cos(yaw) - bvy * math.sin(yaw)
                 setpoint.velocity[1] = bvx * math.sin(yaw) + bvy * math.cos(yaw)
+                setpoint.velocity[2] = bvz
 
                 reached = (
                     abs(dist_err) < APPROACH_TOL_Z and
@@ -320,6 +327,7 @@ class WhiteBoardMission(Node):
                 if self.approach_stable_cnt >= APPROACH_STABLE:
                     self.front_locked_x = self.current_x
                     self.front_locked_y = self.current_y
+                    self.front_locked_z = self.current_z
                     self.front_locked_yaw = self.current_yaw
                     self.hold_front_start = self.get_clock().now()
                     self.get_logger().info(
@@ -329,7 +337,7 @@ class WhiteBoardMission(Node):
                     self.state = 'HOLD_FRONT'
         
         elif self.state == 'HOLD_FRONT':
-            setpoint.position = [self.front_locked_x, self.front_locked_y, TARGET_Z]
+            setpoint.position = [self.front_locked_x, self.front_locked_y, self.front_locked_z]
             setpoint.yaw = self.front_locked_yaw
             elapsed = self._elapsed_s(self.hold_front_start, self.get_clock())
             if self.counter % 10 == 0:
