@@ -89,13 +89,9 @@ class PX4FlowPrecision(Node):
         self.locked_y = None
         self.locked_yaw = None
 
-        # Visión
-        self.gate = None
-        self.last_gate_time = 0
-
         # Parámetros
-        self.target_altitude = 1.0
-        self.target_z = -1.0
+        self.target_altitude = 1.5
+        self.target_z = -1.5
         self.hold_duration = 3.0
 
         # Control de estados
@@ -214,70 +210,31 @@ class PX4FlowPrecision(Node):
 
             if elapsed >= self.hold_duration:
                 self.start_time = time.time()
-                self.state = "SEARCH"
-                self.get_logger().info("SEARCHING GATE")
+                self.state = "FORWARD"
 
-        elif self.state == "SEARCH":
+        elif self.state == "FORWARD":
+            setpoint.position = [float('nan'), float('nan'), self.target_z]
+            setpoint.velocity = [0.2, 0.0, float('nan')]
 
-            setpoint.position = [float('nan'), float('nan'), float('nan')]
-            setpoint.velocity = [0.0, 0.2, 0.0]
-            
             elapsed = time.time() - self.start_time
 
             if elapsed > 8.0:
-                self.state = "CROSS_GATE"
+                self.state = "MOVE_R"
                 self.start_time = time.time()
-                self.get_logger().info("GATE DETECTED")
                 
-        elif self.state == "CROSS_GATE":
-
-            setpoint.position = [float('nan'), float('nan'), float('nan')]
-            setpoint.velocity = [0.6, 0.0, 0.0]
-
-# ------------------------
-            if time.time() - self.start_time > 4.0:
-                self.state = "VEL_REDUC"
-                self.start_time = time.time()
-                self.get_logger().info("REDUCING VELOCITY")
-
-        elif self.state == "VEL_REDUC":
-            setpoint.position = [float('nan'), float('nan'), float('nan')]
-            
-            elapsed = time.time() -self.start_time
-
-            if elapsed < 3.0:
-                setpoint.velocity = [0.4, 0.0, 0.0]
-
-            elif elapsed < 5.0:
-                setpoint.velocity = [0.2, 0.0, 0.0]
-            
-            elif elapsed < 7.0:
-                setpoint.velocity = [0.1, 0.0, 0.0]
-            
-            else:
-                self.state = "TURN1"
-                self.start_time = time.time()
-                self.locked_x1 = self.current_x
-                self.locked_y1 = self.current_y
-
-        elif self.state == "TURN1":
-            
-            setpoint.position = [self.locked_x1, self.locked_y1, self.target_z]
-            setpoint.yaw = 1.57 
-            setpoint.yawspeed = 0.25
+        elif self.state == "MOVE_R":
+            setpoint.position = [float('nan'), float('nan'), self.target_z]            
+            setpoint.velocity = [0.0, 0.2, float('nan')]
 
             elapsed = time.time() - self.start_time
 
-            #Condición para determinar el cambio de estado 
-            if elapsed > 7.0:
-                self.start_time = time.time()
+            if elapsed > 8.0:
                 self.state = "LAND"
 
-#---------------------------
         elif self.state == "LAND":
 
-            setpoint.position = [self.locked_x1, self.locked_y1, float('nan')]
-            setpoint.velocity = [float('nan'), float('nan'), 0.4]
+            setpoint.position = [float('nan'), float('nan'), 0.0]
+            setpoint.velocity = [0.0, 0.0, 0.2]
 
             if self.current_distance < 0.15:
                 self.state = "LANDED"
