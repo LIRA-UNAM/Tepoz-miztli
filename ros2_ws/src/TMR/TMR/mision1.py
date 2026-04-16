@@ -17,7 +17,7 @@ import math
 import time
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import Qosetpointrofile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 
 from px4_msgs.msg import (
     OffboardControlMode,
@@ -79,13 +79,13 @@ class Mision1_Full(Node):
     def __init__(self):
         super().__init__('Paquete1_FullMision')
 
-        pub_qos = Qosetpointrofile(
+        pub_qos = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
             history=HistoryPolicy.KEEP_LAST,
             depth=1
         )
-        sub_qos = Qosetpointrofile(
+        sub_qos = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
             durability=DurabilityPolicy.VOLATILE,
             history=HistoryPolicy.KEEP_LAST,
@@ -128,27 +128,24 @@ class Mision1_Full(Node):
             sub_qos)
         
         self.gates_blue = self.create_subscription(
-            PoseArray,
+            Point,
             'm1/blue/coordinates',
             self.gate_cb, 1
         )
         
         self.column_sub = self.create_subscription(
-            PoseArray,
+            Point,
             'm_column/coordinates',
-            self.gate_cb, 1
-        )
+            self.column_cb, 1)
 
         self.aruco_sub = self.create_subscription(
             PoseArray, 
             'aruco/poses',
-            self.aruco_poses_cb, 10)
+            self.aruco_cb, 10)
         
         self.landing_sub = self.create_subscription(
-            PoseArray, 
-            'm4/landing/coordinates',
-
-        )
+            Point, 
+            'm4/landing/coordinates', self.landing_cb, sub_qos)
         
         # VARIABLES DEL ENTORNO
 
