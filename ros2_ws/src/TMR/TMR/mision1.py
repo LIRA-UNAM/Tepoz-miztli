@@ -554,16 +554,16 @@ class Mision1_Full(Node):
         return max(lo, min(hi, value))
     
 def main():
-        rclpy.init()
-        node = Mision1_Full()
-        try:
-            rclpy.spin(node)
-        except KeyboardInterrupt:
-            node.get_logger().info("Interrupción detectada. Cerrando nodo")
-        finally:
-            node.destroy_node()
-            if rclpy.ok():
-                rclpy.shutdown()
+    rclpy.init()
+    node = Mision1_Full()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        node.get_logger().info("Interrupción detectada. Cerrando nodo")
+    finally:
+        node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':

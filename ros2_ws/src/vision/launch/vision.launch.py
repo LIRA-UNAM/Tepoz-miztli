@@ -23,6 +23,13 @@ def generate_launch_description():
         }]
     )
 
+    column_detector = Node(
+        package='vision',
+        executable='column_detector',
+        name='column_detector',
+        output='screen'
+    )
+
     yolo_view = Node(
         package='rqt_image_view',
         executable='rqt_image_view',
@@ -37,9 +44,19 @@ def generate_launch_description():
         arguments=['/aruco/image_annotated']
     )
 
+    column_view = Node(
+        package='rqt_image_view',
+        executable='rqt_image_view',
+        name='column_view',
+        arguments=['/m_column/detections']
+    )
+
+
     return LaunchDescription([
         yolo_node,
         aruco_node,
+        column_detector,
         yolo_view,
-        aruco_view
+        aruco_view,
+        column_view
     ])

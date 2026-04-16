@@ -35,6 +35,7 @@ setup(
             'object_detector = vision.object_detector:main',
             'down_camera = vision.down_camera:main',
             'green_detector = vision.green_detector:main',
+            'column_detector = vision.column_detector:main',
         ],
     },
 )
