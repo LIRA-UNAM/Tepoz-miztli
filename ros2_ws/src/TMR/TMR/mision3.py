@@ -290,6 +290,26 @@ class BlueGateMission(Node):
                 self.start_time = time.time()
                 self.get_logger().info("TURN2")
 
+        elif self.state == "TURN2":
+            
+            setpoint.position = [self.locked_x, self.locked_y, self.target_z]
+            setpoint.yaw = 1.57 
+            setpoint.yawspeed = 0.25
+
+            #Condición para determinar el cambio de estado 
+            if abs(self.current_yaw - 1.57) < 0.1:
+                self.start_time = time.time()
+                self.state = "ADVANCE"
+
+        elif self.state == "ADVANCE2":
+            setpoint.position = [float('nan'), float('nan'), float('nan')]
+            setpoint.velocity = [0.2, 0.0, 0.0]
+
+            if time.time() - self.start_time > 4.0:
+                self.state = "VEL_REDUC"
+                self.start_time = time.time()
+                self.get_logger().info("TURN2")
+
         # Publish setpoint
         self.trajectory_pub.publish(setpoint)
 
