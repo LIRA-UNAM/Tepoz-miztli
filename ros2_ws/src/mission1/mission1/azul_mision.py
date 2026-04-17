@@ -1,9 +1,3 @@
-"""
-Mision 3: Circuito Gate Blue - Aterrizaje
-
-Despegue, Cruce de Gate Blue, Esquivar columnas, Identiica zona de aterizaje, Landing.
-"""
-
 #!/usr/bin/env python3
 import math
 import time
@@ -328,8 +322,6 @@ class BlueGateMission(Node):
         self.trajectory_pub.publish(setpoint)
 
         self.counter += 1
-
-    # ===================== COMMAND =====================
 
     def send_cmd(self, command, param1=0.0, param2=0.0):
         msg = VehicleCommand()
