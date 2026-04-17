@@ -20,7 +20,7 @@ HOLD_DURATION    = 3.0        # espera tras despegue [s]
 
 MOVE_SPEED       = 0.2        # velocidad de desplazamiento [m/s]
 MOVE_RIGHT_TIME  = 5.2        # ← CAMBIA ESTO para más/menos desplazamiento a la derecha [s]
-MOVE_FWD_TIME    = 5.3        # ← CAMBIA ESTO para más/menos avance al frente [s]
+MOVE_FWD_TIME    = 8,0       # ← CAMBIA ESTO para más/menos avance al frente [s]
 
 
 class SimpleMission2(Node):
@@ -190,11 +190,15 @@ class SimpleMission2(Node):
                 self.locked_x = self.current_x
                 self.locked_y = self.current_y
                 self.get_logger().info('→ DONE | Misión completada, manteniendo posición')
-                self.state = 'DONE'
+                self.state = 'LAND'
 
-        elif self.state == 'DONE':
+        elif self.state == 'LAND':
             # Mantiene la última posición indefinidamente
-            setpoint.position = [self.locked_x, self.locked_y, TARGET_Z]
+            setpoint.position = [float('nan'), float('nan'), 0.0]
+            setpoint.velocity = [0.0, 0.0, float('nan')]
+            if self.current_distance < 0.15:
+                self.state = "LANDED"
+                self.send_cmd(400, param1=0.0)
             setpoint.yaw = safe_yaw
 
         self.trajectory_pub.publish(setpoint)
