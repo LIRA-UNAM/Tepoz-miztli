@@ -28,7 +28,8 @@ setup(
     entry_points={
         'console_scripts': [
             'yolo_node = yolo_vision.yolo_detector:main',
-            'auto_pilot = yolo_vision.vision_navigation:main'
+            'auto_pilot = yolo_vision.vision_navigation:main',
+            'gates = yolo_vision.yolo_gates:main',
         ],
     },
 )
