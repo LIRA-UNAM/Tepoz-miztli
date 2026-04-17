@@ -21,17 +21,17 @@ from px4_msgs.msg import (
 # ==========================================
 # PARÁMETROS DEL CIRCUITO m
 # ==========================================
-TARGET_ALTITUDE = 1.35
-TARGET_Z = -1.35       # NED: Negativo es hacia arriba
+TARGET_ALTITUDE = 1.5
+TARGET_Z = -1.5       # NED: Negativo es hacia arriba
 LANDING_Z = 0.2
 HOLD_DURATION = 3.0   # Segundos de espera al despegar/aterrizar
 
 # COORDENADAS ABSOLUTAS DESDE EL PUNTO DE DESPEGUE (0,0)
 # X = Metros hacia el Frente | Y = Metros hacia la Derecha
-DIST_1_ALINEACION_Y      = 1.5   # Cuánto se mueve a la derecha para centrar
-DIST_2_FONDO_X           = 3.2   # Cuánto avanza al frente pasando las gates
-DIST_3_CARRIL_REGRESO_Y  = 4.3   # Cuánto se mueve a la derecha para evitar las columnas de regreso
-DIST_4_REGRESO_X         = 0.0   # A qué distancia frontal regresa (0.0 = línea de salida)
+DIST_1_ALINEACION_Y      = 1.2   # Cuánto se mueve a la derecha para centrar
+DIST_2_FONDO_X           = 4.5   # Cuánto avanza al frente pasando las gates
+DIST_3_CARRIL_REGRESO_Y  = 5.3   # Cuánto se mueve a la derecha para evitar las columnas de regreso
+DIST_4_REGRESO_X         = 4.45   # A qué distancia frontal regresa (0.0 = línea de salida)
 DIST_5_META_Y            = 0.0   # A qué distancia lateral regresa (0.0 = punto de salida)
 
 # Tolerancias
