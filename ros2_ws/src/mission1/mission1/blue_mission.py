@@ -143,9 +143,16 @@ class PX4FlowPrecision(Node):
 
         offboard = OffboardControlMode()
         offboard.timestamp = now
-        offboard.position = True
-        offboard.velocity =True
+
+        if self.state in ["SEARCH", "CENTER", "CROSS_GATE"]:
+            offboard.position = False
+            offboard.velocity = True
+        else:
+            offboard.position = True
+            offboard.velocity = False
+
         offboard.acceleration = False
+
         self.offboard_pub.publish(offboard)
 
         #Setpoint
