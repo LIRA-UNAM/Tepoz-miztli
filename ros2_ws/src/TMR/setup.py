@@ -37,6 +37,7 @@ setup(
             'mision1LA = TMR.mision1_lazo_abierto:main',
             'mision4LA = TMR.mision4_lazo_abierto:main',
             'version2 = TMR.mision1_v2:main',
+            'blue_abierto = TMR.lazo_abierto_blue:main',
             # 'mision5 = TMR.mision5:main',
             # 'mision6 = TMR.mision6:main',
         ],
