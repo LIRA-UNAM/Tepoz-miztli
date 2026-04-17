@@ -34,6 +34,8 @@ setup(
             'mision2 = TMR.mision2:main',
             'mision3 = TMR.mision3:main',
             'mision4 = TMR.mision4:main',
+            'mision1LA = TMR.mision1_lazo_abierto:main',
+            'mision4LA = TMR.mision4_lazo_abierto:main',
             # 'mision5 = TMR.mision5:main',
             # 'mision6 = TMR.mision6:main',
         ],
