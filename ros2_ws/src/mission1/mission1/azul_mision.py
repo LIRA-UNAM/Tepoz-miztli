@@ -230,7 +230,7 @@ class BlueGateMission(Node):
         elif self.state == 'SEARCH':
 
             setpoint.position = [float('nan'), float('nan'), float('nan')]
-            setpoint.velocity = [0.0, SEARCH_SPEED, 0.0]
+            setpoint.velocity = [0.0, SEARCH_SPEED, float('nan')]
 
             if self.gate:
                 self.state = "CROSS_GATE"
@@ -240,7 +240,7 @@ class BlueGateMission(Node):
         elif self.state == 'CROSS_GATE':
 
             setpoint.position = [float('nan'), float('nan'), float('nan')]
-            setpoint.velocity = [0.6, 0.0, 0.0]
+            setpoint.velocity = [0.6, 0.0, float('nan')]
 
             if time.time() - self.start_time > 4.0:
                 self.state = "VEL_REDUC"
@@ -252,13 +252,13 @@ class BlueGateMission(Node):
             elapsed = time.time() - self.start_time
 
             if elapsed < 2.0:
-                setpoint.velocity = [0.4, 0.0, 0.0]
+                setpoint.velocity = [0.4, 0.0, float('nan')]
 
             elif elapsed < 4.0:
-                setpoint.velocity = [0.2, 0.0, 0.0]
+                setpoint.velocity = [0.2, 0.0, float('nan')]
 
             elif elapsed < 6.0:
-                setpoint.velocity = [0.1, 0.0, 0.0]
+                setpoint.velocity = [0.1, 0.0, float('nan')]
 
             else:
                 self.get_logger().info("MISSION COMPLETED")
@@ -277,7 +277,7 @@ class BlueGateMission(Node):
 
         elif self.state == "ADVANCE":
             setpoint.position = [float('nan'), float('nan'), float('nan')]
-            setpoint.velocity = [0.2, 0.0, 0.0]
+            setpoint.velocity = [0.2, 0.0, float('nan')]
 
             if time.time() - self.start_time > 4.0:
                 self.state = "TURN2"
@@ -297,7 +297,7 @@ class BlueGateMission(Node):
 
         elif self.state == "ADVANCE2":
             setpoint.position = [float('nan'), float('nan'), float('nan')]
-            setpoint.velocity = [0.2, 0.0, 0.0]
+            setpoint.velocity = [0.2, 0.0, float('nan')]
 
             if time.time() - self.start_time > 4.0:
                 self.state = "LAND"
