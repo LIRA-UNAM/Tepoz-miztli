@@ -40,6 +40,7 @@ setup(
             'blue_abierto = TMR.lazo_abierto_blue:main',
             # 'mision5 = TMR.mision5:main',
             # 'mision6 = TMR.mision6:main',
+            #
         ],
     },
 )
